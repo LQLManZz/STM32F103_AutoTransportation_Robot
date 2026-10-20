@@ -1,0 +1,48 @@
+{
+    "cmake.preferredGenerators": [
+        "Ninja"
+    ],
+    "cmake.defaultConfigurePreset": "Debug",
+    "cmake.defaultBuildPreset": "Debug",
+    "cmake.environment": {
+        "PATH": "C:/Users/long5/AppData/Local/stm32cube/bundles/gnu-tools-for-stm32/14.3.1+st.2/bin;C:/Users/long5/AppData/Local/stm32cube/bundles/programmer/2.23.0/bin;${env:PATH}"
+    },
+    "terminal.integrated.env.windows": {
+        "PATH": "C:/Users/long5/AppData/Local/stm32cube/bundles/gnu-tools-for-stm32/14.3.1+st.2/bin;C:/Users/long5/AppData/Local/stm32cube/bundles/programmer/2.23.0/bin;${env:PATH}"
+    },
+    "cmake.debugConfig": {
+        "name": "Debug STM32 (ST-Link GDB Server)"
+    },
+    "clangd.arguments": [
+        "--compile-commands-dir=${workspaceFolder}/build/Debug",
+        "--query-driver=**/arm-none-eabi-gcc*",
+        "--header-insertion=never"
+    ],
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/build/Debug/compile_commands.json",
+    "C_Cpp.default.compilerPath": "C:/Users/long5/AppData/Local/stm32cube/bundles/gnu-tools-for-stm32/14.3.1+st.2/bin/arm-none-eabi-gcc.exe",
+    "C_Cpp.formatting": "default",
+    "C_Cpp.clang_format_style": "file",
+    "C_Cpp.clang_format_fallbackStyle": "{ BasedOnStyle: LLVM, IndentWidth: 2, BreakBeforeBraces: Allman, ColumnLimit: 0, SortIncludes: Never }",
+    "files.associations": {
+        "*.h": "c"
+    },
+    "[c]": {
+        "editor.defaultFormatter": "ms-vscode.cpptools",
+        "editor.formatOnSave": true,
+        "editor.tabSize": 2
+    },
+    "[cpp]": {
+        "editor.defaultFormatter": "ms-vscode.cpptools",
+        "editor.formatOnSave": true,
+        "editor.tabSize": 2
+    },
+    "editor.quickSuggestions": {
+        "other": "on",
+        "comments": "off",
+        "strings": "off"
+    },
+    "editor.acceptSuggestionOnEnter": "off",
+    "editor.tabCompletion": "on",
+    "editor.snippetSuggestions": "top",
+    "editor.suggestSelection": "first"
+}
