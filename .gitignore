@@ -1,0 +1,39 @@
+# Mặc định bỏ hết, chỉ giữ các loại file được liệt kê bên dưới
+*
+!*/
+!.gitignore
+
+# Mô hình 3D và tài liệu
+!*.stl
+!*.step
+!*.STEP
+!*.stp
+!*.md
+
+# Bản vẽ và ảnh thiết kế
+!*.png
+!*.jpg
+!*.JPG
+!*.pdf
+
+# Code firmware
+!*.c
+!*.h
+!*.s
+!*.ld
+!*.ioc
+!*.cmake
+!CMakeLists.txt
+
+# Cấu hình môi trường, thư viện sinh sẵn, thư mục build
+.claude/
+.agents/
+.obsidian/
+.superpowers/
+.vscode/
+_templates/
+build/
+Drivers/
+__pycache__/
+CLAUDE.md
+AGENTS.md
