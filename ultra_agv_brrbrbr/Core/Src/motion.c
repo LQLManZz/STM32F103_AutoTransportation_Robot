@@ -7,7 +7,7 @@ void motionInit(void)
   motorInit();
 }
 
-// Cả 2 bánh cùng chiều, cộng trim để xe chạy thẳng
+// Ca 2 banh cung chieu, cong trim de xe chay thang
 static void motionRun(MotorDir dir, uint8_t speedPercent)
 {
   int16_t speedLeft = (int16_t)speedPercent + MOTOR_TRIM_LEFT_OFFSET;
@@ -30,13 +30,33 @@ static void motionRun(MotorDir dir, uint8_t speedPercent)
   motorSetSpeed(MOTOR_RIGHT, dir, (uint8_t)speedRight);
 }
 
-static void motionSpinLeft(uint8_t speedPercent)
+void motionForward(uint8_t speedPercent)
+{
+  motionRun(MOTOR_FORWARD, speedPercent);
+}
+
+void motionBackward(uint8_t speedPercent)
+{
+  motionRun(MOTOR_BACKWARD, speedPercent);
+}
+
+void motionBrake(void)
+{
+  motorBrakeAll();
+}
+
+void motionStop(void)
+{
+  motorStopAll();
+}
+
+void motionSpinLeft(uint8_t speedPercent)
 {
   motorSetSpeed(MOTOR_LEFT, MOTOR_BACKWARD, speedPercent);
   motorSetSpeed(MOTOR_RIGHT, MOTOR_FORWARD, speedPercent);
 }
 
-static void motionSpinRight(uint8_t speedPercent)
+void motionSpinRight(uint8_t speedPercent)
 {
   motorSetSpeed(MOTOR_LEFT, MOTOR_FORWARD, speedPercent);
   motorSetSpeed(MOTOR_RIGHT, MOTOR_BACKWARD, speedPercent);
@@ -59,7 +79,7 @@ void motionSpinAngle(int16_t angleDeg, uint8_t speedPercent)
   }
   HAL_Delay((uint32_t)((float)abs(angleDeg) * SPIN_MS_PER_DEGREE));
 
-  motorBrakeAll(); // phanh cứng chống trôi
+  motorBrakeAll(); // phanh cung chong troi
   HAL_Delay(100);
 }
 
@@ -76,7 +96,7 @@ void motionDriveDistance(int16_t distanceCm, uint8_t speedPercent)
   uint32_t rampDownMs = 210;
   uint8_t startSpeed = (RAMP_START_SPEED < speedPercent) ? RAMP_START_SPEED : speedPercent;
 
-  if (totalMs < 500) // quá ngắn: chạy đều, không ramp
+  if (totalMs < 500) // qua ngan: chay deu, khong ramp
   {
     motionRun(dir, speedPercent);
     HAL_Delay(totalMs);
@@ -90,7 +110,7 @@ void motionDriveDistance(int16_t distanceCm, uint8_t speedPercent)
     rampDownMs = totalMs - rampUpMs;
   }
 
-  // Tăng tốc từ startSpeed lên speedPercent
+  // Tang toc tu startSpeed len speedPercent
   uint32_t upSteps = rampUpMs / RAMP_STEP_DELAY_MS;
   if (upSteps == 0)
   {
@@ -102,11 +122,11 @@ void motionDriveDistance(int16_t distanceCm, uint8_t speedPercent)
     HAL_Delay(RAMP_STEP_DELAY_MS);
   }
 
-  // Chạy đều
+  // Chay deu
   motionRun(dir, speedPercent);
   HAL_Delay(totalMs - rampUpMs - rampDownMs);
 
-  // Giảm tốc về startSpeed
+  // Giam toc ve startSpeed
   uint32_t downSteps = rampDownMs / RAMP_STEP_DELAY_MS;
   if (downSteps == 0)
   {

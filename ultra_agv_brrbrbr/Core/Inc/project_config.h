@@ -53,9 +53,26 @@
 #define RAMP_START_SPEED 20   // Tốc độ bắt đầu tăng tốc (% PWM), đủ thắng ma sát tĩnh
 #define RAMP_STEP_DELAY_MS 30 // Thời gian mỗi bước tăng/giảm tốc (ms)
 
-// --- Tiếp cận vật ---
-#define AGV_DRIVE_SPEED 40 // Tốc độ chạy tới vật (% PWM)
-#define AGV_RAM_EXTRA_CM 3 // Chạy thêm sau khi tới vị trí đo được (cm), bù sai số thời gian để chắc chắn chạm vật
-#define AGV_STEP_MAX_CM 10 // Mỗi đoạn chạy tối đa (cm), hết đoạn đo lại khoảng cách thật để chống sai số chạy theo thời gian
+// --- Căn hướng chủ động khóa mục tiêu bằng sóng siêu âm (Active Heading Alignment) ---
+#define ALIGN_TOLERANCE_DEG    6.0f   // Nếu góc lệch ban đầu <= 6° -> Coi như đã thẳng mặt, không cần xoay
+#define ALIGN_MAX_TIMEOUT_MS   3000u  // Timeout tối đa khi xoay xe tìm khóa mục tiêu (ms)
+#define ALIGN_CENTER_DELAY_MS  50u    // Thời gian xoay thêm (ms) sau khi mép búp sóng chạm vật để vào đúng tim
+#define ALIGN_SPEED_PERCENT    SPEED_SPIN_CALM // Tốc độ xoay chậm rãi (26% PWM)
+#define ALIGN_DIST_MARGIN_CM   8.0f   // Dung sai khoảng cách khi so với khoảng cách quét ban đầu (cm)
+
+// --- Tiếp cận vật bằng PID cự ly siêu âm (Distance PID) trong dải dung sai ---
+#define PID_DIST_TARGET_CM     3.5f   // Cự ly dừng mong muốn trước mũi xe (cm)
+#define PID_DIST_TOLERANCE_CM  0.5f   // Dung sai dừng cho phép (|e| <= 0.5 cm -> Đã tới đích [3.0 - 4.0 cm])
+#define PID_KP                 1.6f   // Hệ số tỷ lệ P: điều chỉnh tốc độ theo cự ly
+#define PID_KI                 0.06f  // Hệ số tích phân I: triệt tiêu sai số tĩnh ở centimet cuối
+#define PID_KD                 1.4f   // Hệ số vi phân D: hãm quán tính, chống đâm sầm
+#define PID_I_MAX              12.0f  // Giới hạn tích phân chống bão hòa (Anti-windup)
+#define PID_SPEED_MIN          22u    // Tốc độ tối thiểu (% PWM) thắng ma sát tĩnh, không kẹt motor
+#define PID_SPEED_MAX          50u    // Tốc độ tối đa (% PWM) an toàn khi tiếp cận
+#define PID_SAMPLE_TIME_MS     60u    // Chu kỳ lấy mẫu SRF05 (ms, cần >= 50ms)
+#define PID_TIMEOUT_MS         6000u  // Timeout tiếp cận tối đa (ms)
+
+#define AGV_DRIVE_SPEED 40 // Tốc độ chạy tới vật khi chạy định lượng (% PWM)
+#define AGV_RAM_EXTRA_CM 2 // Đẩy thêm nhẹ sau khi tới cự ly (cm) để chắc chắn chạm cục tẩy
 
 #endif
