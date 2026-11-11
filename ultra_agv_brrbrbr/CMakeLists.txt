@@ -54,7 +54,10 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/motor.c
     Core/Src/motion.c
     Core/Src/oled.c
+    Core/Src/lcd_i2c.c
     Core/Src/debug.c
+    Core/Src/target_parser.c
+    Core/Src/sound_nav.c
 )
 
 # Add include paths

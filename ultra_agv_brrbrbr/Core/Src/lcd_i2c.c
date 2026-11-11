@@ -18,6 +18,7 @@ static uint8_t lcd_bl = BIT_BL;
 /* Gui 1 nibble (dung luc khoi tao) */
 static void lcd_send_nibble(uint8_t nibble)
 {
+    if (!lcd_i2c) return;
     uint8_t d = (uint8_t)((nibble << 4) & 0xF0) | lcd_bl;
     uint8_t buf[2] = { (uint8_t)(d | BIT_EN), d };
     HAL_I2C_Master_Transmit(lcd_i2c, lcd_addr, buf, 2, 20);
@@ -26,6 +27,7 @@ static void lcd_send_nibble(uint8_t nibble)
 /* Gui 1 byte (lenh rs=0, du lieu rs=1) = 2 nibble, 4 byte I2C trong 1 lan truyen */
 static void lcd_send(uint8_t value, uint8_t rs)
 {
+    if (!lcd_i2c) return;
     uint8_t hi  = value & 0xF0;
     uint8_t lo  = (uint8_t)(value << 4) & 0xF0;
     uint8_t ctl = lcd_bl | (rs ? BIT_RS : 0);
@@ -38,11 +40,15 @@ static void lcd_send(uint8_t value, uint8_t rs)
 
 HAL_StatusTypeDef LCD_Init(I2C_HandleTypeDef *hi2c, uint8_t addr)
 {
+    if (!hi2c) return HAL_ERROR;
+    if (HAL_I2C_IsDeviceReady(hi2c, addr, 2, 20) != HAL_OK)
+    {
+        lcd_i2c = NULL;
+        return HAL_ERROR;           /* Khong thay LCD: kiem tra day / dia chi */
+    }
+
     lcd_i2c  = hi2c;
     lcd_addr = addr;
-
-    if (HAL_I2C_IsDeviceReady(lcd_i2c, lcd_addr, 3, 50) != HAL_OK)
-        return HAL_ERROR;           /* Khong thay LCD: kiem tra day / dia chi */
 
     HAL_Delay(50);                  /* cho LCD len nguon */
 
@@ -88,6 +94,7 @@ void LCD_PrintLine(uint8_t row, const char *str)
 
 void LCD_Backlight(uint8_t on)
 {
+    if (!lcd_i2c) return;
     lcd_bl = on ? BIT_BL : 0;
     uint8_t d = lcd_bl;
     HAL_I2C_Master_Transmit(lcd_i2c, lcd_addr, &d, 1, 20);

@@ -23,6 +23,9 @@ void motorInit(void);
 // Đặt chiều quay và tốc độ (0 - 100 %) cho một bánh
 void motorSetSpeed(MotorId motor, MotorDir dir, uint8_t speedPercent);
 
+// Đặt trực tiếp giá trị duty raw (0 - 999) bỏ qua ngưỡng tối thiểu, dùng cho việc test / calibrate
+void motorSetDutyRaw(MotorId motor, MotorDir dir, uint16_t duty);
+
 void motorStopAll(void);
 void motorBrakeAll(void);
 
