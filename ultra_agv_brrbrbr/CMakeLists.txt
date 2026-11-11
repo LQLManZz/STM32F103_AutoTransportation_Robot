@@ -49,6 +49,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/servo.c
     Core/Src/delay.c
     Core/Src/scanner.c
+    Core/Src/agv.c
+    Core/Src/motortest.c
     Core/Src/motor.c
     Core/Src/motion.c
     Core/Src/oled.c

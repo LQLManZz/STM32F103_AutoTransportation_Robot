@@ -7,27 +7,44 @@ void motionInit(void)
   motorInit();
 }
 
+// Cong offset vao toc do, gioi han 0 - 100 %
+static uint8_t addOffset(uint8_t speedPercent, int8_t offset)
+{
+  int16_t speed = (int16_t)speedPercent + offset;
+
+  if (speed < 0)
+  {
+    return 0;
+  }
+  if (speed > 100)
+  {
+    return 100;
+  }
+  return (uint8_t)speed;
+}
+
 // Ca 2 banh cung chieu, cong trim de xe chay thang
 static void motionRun(MotorDir dir, uint8_t speedPercent)
 {
-  int16_t speedLeft = (int16_t)speedPercent + MOTOR_TRIM_LEFT_OFFSET;
-  int16_t speedRight = (int16_t)speedPercent + MOTOR_TRIM_RIGHT_OFFSET;
-
   if (speedPercent == 0)
   {
     motorStopAll();
     return;
   }
-  if (speedLeft > 100)
+  motorSetSpeed(MOTOR_LEFT, dir, addOffset(speedPercent, MOTOR_TRIM_LEFT_OFFSET));
+  motorSetSpeed(MOTOR_RIGHT, dir, addOffset(speedPercent, MOTOR_TRIM_RIGHT_OFFSET));
+}
+
+// Hai banh nguoc chieu, cong trim rieng cua xoay de tam quay nam giua 2 banh
+static void motionSpin(MotorDir dirLeft, MotorDir dirRight, uint8_t speedPercent)
+{
+  if (speedPercent == 0)
   {
-    speedLeft = 100;
+    motorStopAll();
+    return;
   }
-  if (speedRight > 100)
-  {
-    speedRight = 100;
-  }
-  motorSetSpeed(MOTOR_LEFT, dir, (uint8_t)speedLeft);
-  motorSetSpeed(MOTOR_RIGHT, dir, (uint8_t)speedRight);
+  motorSetSpeed(MOTOR_LEFT, dirLeft, addOffset(speedPercent, SPIN_TRIM_LEFT_OFFSET));
+  motorSetSpeed(MOTOR_RIGHT, dirRight, addOffset(speedPercent, SPIN_TRIM_RIGHT_OFFSET));
 }
 
 void motionForward(uint8_t speedPercent)
@@ -52,14 +69,12 @@ void motionStop(void)
 
 void motionSpinLeft(uint8_t speedPercent)
 {
-  motorSetSpeed(MOTOR_LEFT, MOTOR_BACKWARD, speedPercent);
-  motorSetSpeed(MOTOR_RIGHT, MOTOR_FORWARD, speedPercent);
+  motionSpin(MOTOR_BACKWARD, MOTOR_FORWARD, speedPercent);
 }
 
 void motionSpinRight(uint8_t speedPercent)
 {
-  motorSetSpeed(MOTOR_LEFT, MOTOR_FORWARD, speedPercent);
-  motorSetSpeed(MOTOR_RIGHT, MOTOR_BACKWARD, speedPercent);
+  motionSpin(MOTOR_FORWARD, MOTOR_BACKWARD, speedPercent);
 }
 
 void motionSpinAngle(int16_t angleDeg, uint8_t speedPercent)
@@ -77,7 +92,7 @@ void motionSpinAngle(int16_t angleDeg, uint8_t speedPercent)
   {
     motionSpinLeft(speedPercent);
   }
-  HAL_Delay((uint32_t)((float)abs(angleDeg) * SPIN_MS_PER_DEGREE));
+  HAL_Delay((uint32_t)((float)abs(angleDeg) * SPIN_MS_PER_DEGREE + SPIN_OFFSET_MS));
 
   motorBrakeAll(); // phanh cung chong troi
   HAL_Delay(100);

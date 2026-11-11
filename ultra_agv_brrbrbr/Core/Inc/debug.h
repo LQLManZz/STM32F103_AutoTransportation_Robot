@@ -16,4 +16,7 @@ void debugDrive(float distanceCm);
 // Báo mất vật khi đang chạy tới vật
 void debugDriveLost(void);
 
+// Báo bước đang chạy của kịch bản test động cơ
+void debugMotorTest(const char *step);
+
 #endif // DEBUG_H

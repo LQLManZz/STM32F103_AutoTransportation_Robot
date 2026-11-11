@@ -43,3 +43,10 @@ void debugDriveLost(void)
   printf("DRV_LOST\r\n");
   oledPrintLine(3, "DRV_LOST");
 }
+
+void debugMotorTest(const char *step)
+{
+  printf("TEST step=%s\r\n", step);
+  oledPrintLine(0, "MOTOR TEST");
+  oledPrintLine(3, "%s", step);
+}

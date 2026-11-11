@@ -21,10 +21,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "delay.h"
-#include "debug.h"
-#include "scanner.h"
 #include "agv.h"
+#include "motortest.h"
 
 /* USER CODE END Includes */
 
@@ -69,7 +67,7 @@ static void MX_I2C2_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-/* USER CODE END 0 */
+/* USER CODE END 0 */ 
 
 /**
  * @brief  The application entry point.
@@ -105,9 +103,7 @@ int main(void)
   MX_USART1_UART_Init();
   MX_I2C2_Init();
   /* USER CODE BEGIN 2 */
-  delayInit();
-  debugInit();
-  scanInit();
+  agvInit();
 
   /* USER CODE END 2 */
 
@@ -118,9 +114,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    float xCm, yCm;
-
-    scanForObject(&xCm, &yCm);
+    motorTestRun();
   }
   /* USER CODE END 3 */
 }
@@ -284,7 +278,7 @@ static void MX_TIM3_Init(void)
     Error_Handler();
   }
   sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
-  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)                  
   {
     Error_Handler();
   }

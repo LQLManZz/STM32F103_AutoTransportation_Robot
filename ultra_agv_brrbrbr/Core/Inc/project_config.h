@@ -22,6 +22,7 @@
 #define SCAN_SETTLE_MS 400u     // Chờ servo quay xong (ms)
 #define SCAN_PERIOD_MS 60u      // Chu kỳ giữa 2 lần đo và in (ms), SRF05 cần >= 50
 #define SCAN_FOUND_HOLD_MS 1500u // Dừng sau khi thấy vật (ms)
+#define SCAN_CONFIRM_COUNT 2u   // Số lần đo liên tiếp có vật mới coi là thấy vật
 
 #define SOUND_SPEED_CM_US 0.0343f   // Tốc độ âm thanh (cm/us)
 #define MAX_ECHO_TIMEOUT_US 30000UL // Thời gian chờ echo tối đa (us)
@@ -34,43 +35,49 @@
 
 // --- Động cơ (L298N, PWM TIM3 CH1 = ENA/PA6, CH2 = ENB/PA7) ---
 #define MOTOR_PORT_DIR GPIOA
-#define MOTOR_PIN_IN1 motor_IN1_Pin // PA2 - IN1 L298N (bánh phải)
-#define MOTOR_PIN_IN2 motor_IN2_Pin // PA3 - IN2 L298N (bánh phải)
+#define MOTOR_PIN_IN2 motor_IN1_Pin // PA2 - IN1 L298N (bánh phải)
+#define MOTOR_PIN_IN1 motor_IN2_Pin // PA3 - IN2 L298N (bánh phải)
 #define MOTOR_PIN_IN3 motor_IN3_Pin // PA4 - IN3 L298N (bánh trái)
 #define MOTOR_PIN_IN4 motor_IN4_Pin // PA5 - IN4 L298N (bánh trái)
 
-#define MOTOR_PWM_MAX_DUTY 450 // Trần an toàn cho TT Motor trên pin 12V (ARR TIM3 = 999)
-#define MOTOR_PWM_MIN_DUTY 200 // Ngưỡng thắng ma sát tĩnh
+#define MOTOR_PWM_MAX_DUTY 650 // Trần an toàn cho TT Motor trên pin 12V (ARR TIM3 = 999)
+#define MOTOR_PWM_MIN_DUTY 300 // Ngưỡng thắng ma sát tĩnh
 
-#define SPIN_MS_PER_DEGREE 4.8f // Thời gian xoay 1° ở SPEED_SPIN_CALM (ms/độ), đo thực tế
-#define SPEED_SPIN_CALM 26      // Tốc độ xoay tại chỗ (% PWM), chậm để không trôi quá góc
+#define SPIN_MS_PER_DEGREE 4.4f // Thời gian xoay 1° ở SPEED_SPIN_CALM (ms/độ), đo từ video: xe quay ~227°/s
+#define SPIN_OFFSET_MS 70.0f    // Thời gian xoay cộng cố định (ms), bù độ trễ tăng tốc/phanh, không phụ thuộc góc
+#define SPEED_SPIN_CALM 50      // Tốc độ xoay tại chỗ (% PWM), chậm để không trôi quá góc
 #define DRIVE_MS_PER_CM 45.0f   // Thời gian chạy 1 cm ở 40% PWM (ms/cm)
 
 // Bù tốc độ để xe chạy thẳng: xe lệch phải thì tăng bánh phải, lệch trái thì giảm
-#define MOTOR_TRIM_LEFT_OFFSET 0  // % PWM cộng thêm cho bánh trái
+#define MOTOR_TRIM_LEFT_OFFSET 2  // % PWM cộng thêm cho bánh trái
 #define MOTOR_TRIM_RIGHT_OFFSET 4 // % PWM cộng thêm cho bánh phải
 
-#define RAMP_START_SPEED 20   // Tốc độ bắt đầu tăng tốc (% PWM), đủ thắng ma sát tĩnh
+// Bù tốc độ khi xoay tại chỗ: xoay phải bị trôi quanh bánh trái thì tăng bánh trái, giảm bánh phải
+#define SPIN_TRIM_LEFT_OFFSET 20   // % PWM cộng thêm cho bánh trái
+#define SPIN_TRIM_RIGHT_OFFSET -10 // % PWM cộng thêm cho bánh phải
+
+#define RAMP_START_SPEED 20  // Tốc độ bắt đầu tăng tốc (% PWM), đủ thắng ma sát tĩnh
 #define RAMP_STEP_DELAY_MS 30 // Thời gian mỗi bước tăng/giảm tốc (ms)
 
-// --- Căn hướng chủ động khóa mục tiêu bằng sóng siêu âm (Active Heading Alignment) ---
-#define ALIGN_TOLERANCE_DEG    6.0f   // Nếu góc lệch ban đầu <= 6° -> Coi như đã thẳng mặt, không cần xoay
-#define ALIGN_MAX_TIMEOUT_MS   3000u  // Timeout tối đa khi xoay xe tìm khóa mục tiêu (ms)
-#define ALIGN_CENTER_DELAY_MS  50u    // Thời gian xoay thêm (ms) sau khi mép búp sóng chạm vật để vào đúng tim
-#define ALIGN_SPEED_PERCENT    SPEED_SPIN_CALM // Tốc độ xoay chậm rãi (26% PWM)
-#define ALIGN_DIST_MARGIN_CM   8.0f   // Dung sai khoảng cách khi so với khoảng cách quét ban đầu (cm)
+// --- Tiếp cận vật bằng PID cự ly siêu âm ---
+#define PID_DIST_TARGET_CM 3.5f    // Cự ly dừng mong muốn trước mũi xe (cm)
+#define PID_DIST_TOLERANCE_CM 0.5f // Dung sai dừng (cm): tới đích khi cự ly <= đích + dung sai
+#define PID_KP 1.6f                // Hệ số tỷ lệ P
+#define PID_KI 0.06f               // Hệ số tích phân I
+#define PID_KD 1.4f                // Hệ số vi phân D
+#define PID_I_MAX 12.0f            // Giới hạn tích phân chống bão hòa
+#define PID_I_ZONE_CM 20.0f        // Chỉ tích phân khi sai số < giá trị này (cm)
+#define PID_SPEED_MIN 22u          // Tốc độ tối thiểu (% PWM) thắng ma sát tĩnh, không để xe dừng giữa đường
+#define PID_SPEED_MAX 50u          // Tốc độ tối đa (% PWM) khi tiếp cận
+#define PID_SAMPLE_TIME_MS 60u     // Chu kỳ đo SRF05 (ms, cần >= 50)
+#define PID_TIMEOUT_MS 6000u       // Timeout tiếp cận tối đa (ms)
+#define PID_LOST_MAX 3u            // Số lần mất vật liên tiếp thì bỏ cuộc
 
-// --- Tiếp cận vật bằng PID cự ly siêu âm (Distance PID) trong dải dung sai ---
-#define PID_DIST_TARGET_CM     3.5f   // Cự ly dừng mong muốn trước mũi xe (cm)
-#define PID_DIST_TOLERANCE_CM  0.5f   // Dung sai dừng cho phép (|e| <= 0.5 cm -> Đã tới đích [3.0 - 4.0 cm])
-#define PID_KP                 1.6f   // Hệ số tỷ lệ P: điều chỉnh tốc độ theo cự ly
-#define PID_KI                 0.06f  // Hệ số tích phân I: triệt tiêu sai số tĩnh ở centimet cuối
-#define PID_KD                 1.4f   // Hệ số vi phân D: hãm quán tính, chống đâm sầm
-#define PID_I_MAX              12.0f  // Giới hạn tích phân chống bão hòa (Anti-windup)
-#define PID_SPEED_MIN          22u    // Tốc độ tối thiểu (% PWM) thắng ma sát tĩnh, không kẹt motor
-#define PID_SPEED_MAX          50u    // Tốc độ tối đa (% PWM) an toàn khi tiếp cận
-#define PID_SAMPLE_TIME_MS     60u    // Chu kỳ lấy mẫu SRF05 (ms, cần >= 50ms)
-#define PID_TIMEOUT_MS         6000u  // Timeout tiếp cận tối đa (ms)
+// --- Kịch bản test động cơ ---
+#define MOTOR_TEST_START_DELAY_MS 3000u // Chờ trước khi chạy để đặt xe xuống sàn (ms)
+#define MOTOR_TEST_PAUSE_MS 1500u       // Nghỉ giữa 2 động tác (ms)
+#define MOTOR_TEST_DRIVE_CM 30          // Cự ly tiến/lùi (cm)
+#define MOTOR_TEST_DRIVE_SPEED 40       // Tốc độ tiến/lùi (% PWM)
 
 #define AGV_DRIVE_SPEED 40 // Tốc độ chạy tới vật khi chạy định lượng (% PWM)
 #define AGV_RAM_EXTRA_CM 2 // Đẩy thêm nhẹ sau khi tới cự ly (cm) để chắc chắn chạm cục tẩy
