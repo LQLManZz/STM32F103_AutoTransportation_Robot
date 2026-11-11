@@ -1,11 +1,9 @@
-#ifndef DELAY
-#define DELAY
+#ifndef DELAY_H
+#define DELAY_H
 
 #include "stm32f1xx_hal.h"
 
-// Bật bộ đếm chu kỳ DWT cho delayUs
 void delayInit(void);
-
 void delayUs(uint32_t us);
 
-#endif
+#endif // DELAY_H

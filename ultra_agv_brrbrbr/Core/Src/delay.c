@@ -1,5 +1,4 @@
 #include "delay.h"
-#include "project_config.h"
 
 void delayInit(void)
 {
@@ -8,7 +7,6 @@ void delayInit(void)
   DWT->CYCCNT = 0;
 }
 
-/* Delay micro giây bằng cách chờ đủ số chu kỳ CPU */
 void delayUs(uint32_t us)
 {
   uint32_t start = DWT->CYCCNT;

@@ -81,6 +81,8 @@ void Error_Handler(void);
 #define Trig_SRF05_GPIO_Port GPIOB
 #define Echo_SRF05_Pin GPIO_PIN_8
 #define Echo_SRF05_GPIO_Port GPIOA
+#define Echo_SRF04_Pin GPIO_PIN_12
+#define Echo_SRF04_GPIO_Port GPIOA
 
 /* USER CODE BEGIN Private defines */
 

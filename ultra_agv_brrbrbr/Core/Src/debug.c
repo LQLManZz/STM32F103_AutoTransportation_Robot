@@ -1,13 +1,18 @@
 #include "debug.h"
+#include "project_config.h"
 #include "oled.h"
-#include "lcd_i2c.h"
 #include <stdio.h>
 #include <string.h>
 
 extern UART_HandleTypeDef huart1;
-extern I2C_HandleTypeDef hi2c2;
 
-// printf ra UART1
+static const char *targetTypeToStr(ScanTargetType type)
+{
+  if (type == TARGET_OBJECT) return "OBJ_FOUND";
+  if (type == TARGET_OBSTACLE) return "OBSTACLE";
+  return "OBJ_NOTFND";
+}
+
 int __io_putchar(int ch)
 {
   HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, HAL_MAX_DELAY);
@@ -17,39 +22,71 @@ int __io_putchar(int ch)
 void debugInit(void)
 {
   oledInit();
-  // Thử khởi tạo màn hình LCD 16x2 nếu có gắn vào I2C2
-  if (LCD_Init(&hi2c2, LCD_I2C_ADDR_27) != HAL_OK)
-  {
-    LCD_Init(&hi2c2, LCD_I2C_ADDR_3F);
-  }
 }
 
-void debugScan(float distanceCm, uint8_t angleDeg, float xCm, float yCm, bool found)
+void debugScan(float d05RawCm, float d04RawCm, uint8_t angleDeg, uint8_t hitCount, ScanTargetType type)
 {
-  printf("SCAN d=%.1f ang=%u x=%.1f y=%.1f %s\r\n", distanceCm, angleDeg, xCm, yCm,
-         found ? "OBJ_FOUND" : "OBJ_NOTFND");
+  const char *status = targetTypeToStr(type);
+  float d04AdjCm = (d04RawCm >= SCAN_MIN_RANGE_CM) ? (d04RawCm - SENSOR_DEPTH_OFFSET_CM) : d04RawCm;
+  float diffCm = (d05RawCm >= SCAN_MIN_RANGE_CM && d04RawCm >= SCAN_MIN_RANGE_CM) ? (d04AdjCm - d05RawCm) : 0.0f;
 
-  if (!found) // không thấy vật thì tọa độ vô nghĩa
-  {
-    xCm = 0.0f;
-    yCm = 0.0f;
-  }
-  oledPrintLine(0, "ang: %u.0", angleDeg);
-  oledPrintLine(1, "X: %.1f", xCm);
-  oledPrintLine(2, "Y: %.1f", yCm);
-  oledPrintLine(3, found ? "OBJ_FOUND" : "OBJ_NOTFND");
+  printf("SCAN ang=%3u d05_raw=%.1f d04_raw=%.1f d04_adj=%.1f diff=%.1f hit=%u/%u status=%s\r\n",
+         angleDeg, d05RawCm, d04RawCm, d04AdjCm, diffCm, hitCount, SCAN_CONFIRM_COUNT, status);
+  oledPrintLine(0, "A:%3ud C:%1u", angleDeg, hitCount);
+  oledPrintLine(1, "S5:%5.1fcm", d05RawCm);
+  oledPrintLine(2, "S4:%5.1fcm", d04RawCm);
+  oledPrintLine(3, "%s", status);
 }
 
-void debugDrive(float distanceCm)
+void debugScanFine(uint8_t angleDeg, float d05RawCm, float d04RawCm, ScanTargetType type,
+                   float bestDistCm, uint8_t bestAngleDeg)
 {
-  printf("DRV d=%.1f\r\n", distanceCm);
-  oledPrintLine(3, "DRV %.1fcm", distanceCm);
+  const char *status = targetTypeToStr(type);
+  float d04AdjCm = (d04RawCm >= SCAN_MIN_RANGE_CM) ? (d04RawCm - SENSOR_DEPTH_OFFSET_CM) : d04RawCm;
+
+  printf("FINE ang=%3u d05_raw=%.1f d04_raw=%.1f d04_adj=%.1f status=%s best_d=%.1f best_ang=%u\r\n",
+         angleDeg, d05RawCm, d04RawCm, d04AdjCm, status, bestDistCm, bestAngleDeg);
+  oledPrintLine(0, "A:%3ud FIN", angleDeg);
+  oledPrintLine(1, "S5:%5.1fcm", d05RawCm);
+  oledPrintLine(2, "S4:%5.1fcm", d04RawCm);
+  oledPrintLine(3, "%s", status);
 }
 
-void debugDriveLost(void)
+void debugAlign(int16_t coarseSpinDeg, uint8_t fineAngleDeg, int16_t fineSpinDeg, float bestDistCm, bool fineFound)
 {
-  printf("DRV_LOST\r\n");
-  oledPrintLine(3, "DRV_LOST");
+  printf("ALIGN coarse_spin=%d fine_ang=%u fine_spin=%d best_d=%.1f status=%s\r\n",
+         coarseSpinDeg, fineAngleDeg, fineSpinDeg, bestDistCm, fineFound ? "FINE_OK" : "FINE_SKIP");
+}
+
+void debugDrive(uint32_t elapsedMs, float d05RawCm, float d04RawCm, float errorCm,
+                float pTerm, float iTerm, float dTerm, uint8_t pwmPercent, uint8_t lostCount)
+{
+  printf("DRV t=%4lums d05_raw=%.1f d04_raw=%.1f err=%.2f P=%.2f I=%.2f D=%.2f pwm=%u lost=%u/%u status=DRV_PID\r\n",
+         elapsedMs, d05RawCm, d04RawCm, errorCm, pTerm, iTerm, dTerm, pwmPercent, lostCount, PID_LOST_MAX);
+  oledPrintLine(0, "P%2u%% E%4.1f", pwmPercent, errorCm);
+  oledPrintLine(1, "S5:%5.1fcm", d05RawCm);
+  oledPrintLine(2, "S4:%5.1fcm", d04RawCm);
+  oledPrintLine(3, "DRV_PID");
+}
+
+void debugDriveEnd(uint32_t elapsedMs, float d05RawCm, float d04RawCm, uint8_t lostCount, const char *status)
+{
+  printf("DRV_END t=%4lums d05_raw=%.1f d04_raw=%.1f lost=%u/%u status=%s\r\n",
+         elapsedMs, d05RawCm, d04RawCm, lostCount, PID_LOST_MAX, status);
+  oledPrintLine(0, "T:%5lums", elapsedMs);
+  oledPrintLine(1, "S5:%5.1fcm", d05RawCm);
+  oledPrintLine(2, "S4:%5.1fcm", d04RawCm);
+  oledPrintLine(3, "%s", status);
+}
+
+void debugGripReady(float d05RawCm, float d04RawCm, int16_t spinDeg, int16_t advCm)
+{
+  printf("GRIP d05_raw=%.1f d04_raw=%.1f spin_deg=%d adv_cm=%d status=GRIP_RDY\r\n",
+         d05RawCm, d04RawCm, spinDeg, advCm);
+  oledPrintLine(0, "G:%4d deg", spinDeg);
+  oledPrintLine(1, "S5:%5.1fcm", d05RawCm);
+  oledPrintLine(2, "S4:%5.1fcm", d04RawCm);
+  oledPrintLine(3, "GRIP_RDY");
 }
 
 void debugMotorTest(const char *step)
@@ -62,17 +99,8 @@ void debugMotorTest(const char *step)
 void debugMotorPwmTest(uint16_t duty, uint8_t percent, const char *status)
 {
   printf("TEST_PWM Duty=%4u (PWM=%2u%%) - %s\r\n", duty, percent, status);
-
-  // Hiển thị lên OLED SSD1306 (mỗi dòng tối đa 10 ký tự)
   oledPrintLine(0, (strncmp(status, "SPIN", 4) == 0) ? "TEST SPIN" : "TEST PWM");
   oledPrintLine(1, "DUTY:%4u", duty);
   oledPrintLine(2, "PWM : %2u%%", percent);
   oledPrintLine(3, "%-10s", status);
-
-  // Hiển thị lên LCD 16x2 (nếu có gắn trên bus I2C)
-  char lcd_buf[24];
-  snprintf(lcd_buf, sizeof(lcd_buf), "PWM: %-11s", status);
-  LCD_PrintLine(0, lcd_buf);
-  snprintf(lcd_buf, sizeof(lcd_buf), "D:%-4u  PWM:%2u%%", duty, percent);
-  LCD_PrintLine(1, lcd_buf);
 }
