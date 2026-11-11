@@ -24,13 +24,17 @@ static uint16_t percentToDuty(uint8_t percent)
   return (uint16_t)(MOTOR_PWM_MIN_DUTY + ((uint32_t)percent * (MOTOR_PWM_MAX_DUTY - MOTOR_PWM_MIN_DUTY)) / 100);
 }
 
-void motorSetSpeed(MotorId motor, MotorDir dir, uint8_t speedPercent)
+void motorSetDutyRaw(MotorId motor, MotorDir dir, uint16_t duty)
 {
   // Bánh trái: IN3, IN4, TIM3 CH2. Bánh phải: IN1, IN2, TIM3 CH1
   uint16_t pinA = (motor == MOTOR_LEFT) ? MOTOR_PIN_IN3 : MOTOR_PIN_IN1;
   uint16_t pinB = (motor == MOTOR_LEFT) ? MOTOR_PIN_IN4 : MOTOR_PIN_IN2;
   uint32_t channel = (motor == MOTOR_LEFT) ? TIM_CHANNEL_2 : TIM_CHANNEL_1;
-  uint16_t duty = percentToDuty(speedPercent);
+
+  if (duty > 999)
+  {
+    duty = 999;
+  }
 
   switch (dir)
   {
@@ -54,6 +58,11 @@ void motorSetSpeed(MotorId motor, MotorDir dir, uint8_t speedPercent)
     break;
   }
   __HAL_TIM_SET_COMPARE(&htim3, channel, duty);
+}
+
+void motorSetSpeed(MotorId motor, MotorDir dir, uint8_t speedPercent)
+{
+  motorSetDutyRaw(motor, dir, percentToDuty(speedPercent));
 }
 
 void motorStopAll(void)

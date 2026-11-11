@@ -23,6 +23,7 @@
 /* USER CODE BEGIN Includes */
 #include "agv.h"
 #include "motortest.h"
+#include "sound_nav.h"
 
 /* USER CODE END Includes */
 
@@ -104,6 +105,7 @@ int main(void)
   MX_I2C2_Init();
   /* USER CODE BEGIN 2 */
   agvInit();
+  SoundNav_Init();
 
   /* USER CODE END 2 */
 
@@ -114,7 +116,8 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    motorTestRun();
+    SoundNav_Process();
+    // motorSpinContinuousLowestSpeed(); // Test xoay lien tuc o toc do thap nhat
   }
   /* USER CODE END 3 */
 }

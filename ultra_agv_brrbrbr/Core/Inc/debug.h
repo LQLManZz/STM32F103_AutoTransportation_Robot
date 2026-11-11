@@ -19,4 +19,7 @@ void debugDriveLost(void);
 // Báo bước đang chạy của kịch bản test động cơ
 void debugMotorTest(const char *step);
 
+// Báo thông số khi test tìm ngưỡng PWM tối thiểu: duty (0-999), % PWM, trạng thái / bước
+void debugMotorPwmTest(uint16_t duty, uint8_t percent, const char *status);
+
 #endif // DEBUG_H

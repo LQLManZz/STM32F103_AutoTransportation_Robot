@@ -79,6 +79,13 @@
 #define MOTOR_TEST_DRIVE_CM 30          // Cự ly tiến/lùi (cm)
 #define MOTOR_TEST_DRIVE_SPEED 40       // Tốc độ tiến/lùi (% PWM)
 
+// --- Kịch bản test tìm ngưỡng PWM tối thiểu (Max -> giảm từ từ) ---
+#define PWM_TEST_MAX_DUTY 650u         // Duty bắt đầu (trần an toàn pin 12V cho motor TT, ARR = 999)
+#define PWM_TEST_HOLD_MAX_MS 2500u     // Thời gian giữ mức Max để bánh lấy trớn/đà (ms)
+#define PWM_TEST_STEP_DUTY 10u         // Bước giảm Duty mỗi lần (~1% PWM)
+#define PWM_TEST_STEP_MS 600u          // Thời gian giữ mỗi bước giảm để kịp quan sát (ms)
+#define PWM_TEST_CYCLE_PAUSE_MS 5000u  // Nghỉ giữa 2 chu kỳ test lặp lại (ms)
+
 #define AGV_DRIVE_SPEED 40 // Tốc độ chạy tới vật khi chạy định lượng (% PWM)
 #define AGV_RAM_EXTRA_CM 2 // Đẩy thêm nhẹ sau khi tới cự ly (cm) để chắc chắn chạm cục tẩy
 
