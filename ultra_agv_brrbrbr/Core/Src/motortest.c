@@ -3,6 +3,7 @@
 #include "debug.h"
 #include "motion.h"
 #include "motor.h"
+#include <stdio.h>
 
 static bool done = false;
 
@@ -12,18 +13,16 @@ static void startStep(const char *name)
   HAL_Delay(MOTOR_TEST_PAUSE_MS);
 }
 
+static void setWheelsRaw(MotorDir dirL, uint16_t dutyL, MotorDir dirR, uint16_t dutyR, const char *label)
+{
+  motorSetDutyRaw(MOTOR_LEFT, dutyL ? dirL : MOTOR_STOP, dutyL);
+  motorSetDutyRaw(MOTOR_RIGHT, dutyR ? dirR : MOTOR_STOP, dutyR);
+  debugMotorPwmTest(dutyL, motorGetSpeedPercent(MOTOR_LEFT), label);
+}
+
 static void setBothRaw(MotorDir dirL, MotorDir dirR, uint16_t duty, const char *label)
 {
-  if (duty > 0)
-  {
-    motorSetDutyRaw(MOTOR_LEFT, dirL, duty);
-    motorSetDutyRaw(MOTOR_RIGHT, dirR, duty);
-  }
-  else
-  {
-    motorStopAll();
-  }
-  debugMotorPwmTest(duty, (uint8_t)((duty * 100u + 499u) / 999u), label);
+  setWheelsRaw(dirL, duty, dirR, duty, label);
 }
 
 static void rampDownPwm(MotorDir dirL, MotorDir dirR, const char *label)
@@ -99,16 +98,35 @@ void motorTestDirectSpin350(void)
   cw = !cw;
 }
 
-void motorSpinContinuousLowestSpeed(void)
+static void runContinuousLowest(MotorDir dirL, uint16_t dutyL, MotorDir dirR, uint16_t dutyR, const char *prefix)
 {
+  char label[OLED_LINE_CHARS + 1];
+  if (dutyL == dutyR)
+    snprintf(label, sizeof(label), "%s %u", prefix, dutyL);
+  else
+    snprintf(label, sizeof(label), "%s L%u R%u", prefix, dutyL, dutyR);
+
   setBothRaw(MOTOR_STOP, MOTOR_STOP, 0, "WAIT 3S");
   HAL_Delay(MOTOR_TEST_START_DELAY_MS);
 
-  motorSetDutyRaw(MOTOR_LEFT, MOTOR_FORWARD, PWM_TEST_KICK_DUTY);
-  motorSetDutyRaw(MOTOR_RIGHT, MOTOR_BACKWARD, PWM_TEST_KICK_DUTY);
+  // Xung mồi phá ma sát tĩnh trước khi hạ xuống mức PWM duy trì thấp nhất
+  motorSetDutyRaw(MOTOR_LEFT, dirL, PWM_TEST_KICK_DUTY);
+  motorSetDutyRaw(MOTOR_RIGHT, dirR, PWM_TEST_KICK_DUTY);
   HAL_Delay(PWM_TEST_KICK_MS);
 
-  setBothRaw(MOTOR_FORWARD, MOTOR_BACKWARD, PWM_TEST_SPIN_MIN_DUTY, "SPIN MIN 350");
+  setWheelsRaw(dirL, dutyL, dirR, dutyR, label);
   while (1)
     HAL_Delay(1000);
+}
+
+void motorSpinContinuousLowestSpeed(void)
+{
+  runContinuousLowest(MOTOR_FORWARD, PWM_TEST_SPIN_MIN_DUTY,
+                      MOTOR_BACKWARD, PWM_TEST_SPIN_MIN_DUTY, "SPIN MIN");
+}
+
+void motorDriveContinuousLowestSpeed(void)
+{
+  runContinuousLowest(MOTOR_FORWARD, PWM_TEST_DRIVE_LEFT_DUTY,
+                      MOTOR_FORWARD, PWM_TEST_DRIVE_RIGHT_DUTY, "DRIVE");
 }

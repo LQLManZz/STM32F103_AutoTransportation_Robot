@@ -9,65 +9,18 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
-extern TIM_HandleTypeDef htim2;
-
-typedef struct
-{
-  float integral;
-  float prevErrorCm;
-  bool hasPrev;
-  uint32_t lastTimeMs;
-} DistancePid;
-
 static bool arrived = false;
 
-static uint8_t pidCompute(DistancePid *pid, float errorCm, float *pTerm, float *iTerm, float *dTerm)
+static void brakeAndStop(void)
 {
-  uint32_t now = HAL_GetTick();
-  float dtS = (float)(now - pid->lastTimeMs) / 1000.0f;
-  float derivative = 0.0f;
-
-  if (dtS <= 0.0f || dtS > PID_MAX_DT_S)
-    dtS = (float)PID_SAMPLE_TIME_MS / 1000.0f;
-  pid->lastTimeMs = now;
-
-  if (errorCm < PID_I_ZONE_CM)
-  {
-    pid->integral += errorCm * dtS;
-    if (pid->integral > PID_I_MAX) pid->integral = PID_I_MAX;
-  }
-  else
-  {
-    pid->integral = 0.0f;
-  }
-
-  if (pid->hasPrev)
-    derivative = (errorCm - pid->prevErrorCm) / dtS;
-  pid->prevErrorCm = errorCm;
-  pid->hasPrev = true;
-
-  *pTerm = PID_KP * errorCm;
-  *iTerm = PID_KI * pid->integral;
-  *dTerm = PID_KD * derivative;
-
-  float out = *pTerm + *iTerm + *dTerm;
-  if (out < (float)PID_SPEED_MIN) out = (float)PID_SPEED_MIN;
-  if (out > (float)PID_SPEED_MAX) out = (float)PID_SPEED_MAX;
-  return (uint8_t)out;
+  motionBrake();
+  HAL_Delay(DRIVE_BRAKE_DELAY_MS);
+  motionStop();
 }
 
-// Xoay bù tại chỗ sau khi dừng PID để đưa vật từ mũi cảm biến sang vùng tay gắp bên phải
-static void alignGripper(float d05StopCm, float d04StopCm)
+// Chạy thẳng tốc độ cố định tới cự ly mục tiêu (tạm ngắt PID)
+static bool driveApproach(float targetDistCm, bool wallMode)
 {
-  motionSpinAngle(GRIPPER_ALIGN_ANGLE_DEG, SPEED_SPIN_CALM);
-  if (GRIPPER_ALIGN_DIST_CM != 0)
-    motionDriveDistance(GRIPPER_ALIGN_DIST_CM, PID_SPEED_MIN);
-  debugGripReady(d05StopCm, d04StopCm, GRIPPER_ALIGN_ANGLE_DEG, GRIPPER_ALIGN_DIST_CM);
-}
-
-static bool drivePid(void)
-{
-  DistancePid pid = {0.0f, 0.0f, false, HAL_GetTick()};
   uint32_t startMs = HAL_GetTick();
   uint8_t lostCount = 0;
   float d05RawCm = ECHO_ERROR_TIMEOUT;
@@ -79,50 +32,115 @@ static bool drivePid(void)
     measureDualDistanceCM(&d05RawCm, &d04RawCm);
     ScanTargetType type = scanClassifyTarget(d05RawCm, d04RawCm);
 
-    if (type == TARGET_OBSTACLE)
+    if (!wallMode && type == TARGET_OBSTACLE)
     {
-      motionBrake();
-      debugDriveEnd(elapsedMs, d05RawCm, d04RawCm, lostCount, "OBSTACLE");
+      brakeAndStop();
+      debugDriveEnd(elapsedMs, d05RawCm, d04RawCm, lostCount, "OBSTACLE_FND");
       return false;
     }
 
-    if (d05RawCm >= 0.0f && (d05RawCm < SCAN_MIN_RANGE_CM || (d05RawCm - PID_DIST_TARGET_CM) <= PID_DIST_TOLERANCE_CM))
+    if (d05RawCm == ECHO_ERROR_TOO_CLOSE ||
+        (d05RawCm >= 0.0f && d05RawCm <= targetDistCm + PID_DIST_TOLERANCE_CM))
     {
-      motionBrake();
-      debugDriveEnd(elapsedMs, d05RawCm, d04RawCm, lostCount, "DRV_DONE");
-      alignGripper(d05RawCm, d04RawCm);
+      brakeAndStop();
+      debugDriveEnd(elapsedMs, d05RawCm, d04RawCm, lostCount, wallMode ? "WALL_10CM" : "DRV_DONE");
       return true;
     }
 
-    if (type == TARGET_NONE)
+    bool validTarget = wallMode
+                           ? (d05RawCm >= SCAN_MIN_RANGE_CM && d05RawCm <= SCAN_MAX_RANGE_CM)
+                           : (type == TARGET_OBJECT);
+    if (!validTarget)
     {
-      if (++lostCount >= PID_LOST_MAX) break;
+      if (++lostCount >= PID_LOST_MAX)
+      {
+        brakeAndStop();
+        debugDriveEnd(elapsedMs, d05RawCm, d04RawCm, lostCount, wallMode ? "WALL_LOST" : "DRV_LOST");
+        return false;
+      }
       HAL_Delay(PID_SAMPLE_TIME_MS);
       continue;
     }
     lostCount = 0;
 
-    float errorCm = d05RawCm - PID_DIST_TARGET_CM;
-    float pTerm = 0.0f, iTerm = 0.0f, dTerm = 0.0f;
-    uint8_t pwm = pidCompute(&pid, errorCm, &pTerm, &iTerm, &dTerm);
-
-    debugDrive(elapsedMs, d05RawCm, d04RawCm, errorCm, pTerm, iTerm, dTerm, pwm, lostCount);
-    motionForward(pwm);
+    motionForward(AGV_APPROACH_SPEED);
+    debugApproach(elapsedMs, d05RawCm, d04RawCm, targetDistCm, wallMode);
     HAL_Delay(PID_SAMPLE_TIME_MS);
   }
-  motionBrake();
-  debugDriveEnd(HAL_GetTick() - startMs, d05RawCm, d04RawCm, lostCount, "DRV_LOST");
+  brakeAndStop();
+  debugDriveEnd(HAL_GetTick() - startMs, d05RawCm, d04RawCm, lostCount, wallMode ? "WALL_TOUT" : "DRV_TOUT");
   return false;
 }
 
-// Xoay sơ bộ theo góc cực, quét hẹp vi chỉnh hướng mũi xe rồi chạy PID tiếp cận và đưa vào tay gắp
+// Quay servo tới góc cần kiểm tra và xác nhận hướng đó có tường hay không
+static bool checkWallAtAngle(uint8_t angleDeg, float *outDistCm)
+{
+  uint8_t wallHits = 0;
+  float lastDistCm = ECHO_ERROR_TIMEOUT;
+
+  debugDecision("SCANNING");
+  moveServoSmooth(angleDeg);
+  HAL_Delay(SCAN_SETTLE_MS);
+
+  for (uint8_t i = 0; i < WALL_CHECK_SAMPLES; i++)
+  {
+    float d05RawCm = ECHO_ERROR_TIMEOUT;
+    float d04RawCm = ECHO_ERROR_TIMEOUT;
+    measureDualDistanceCM(&d05RawCm, &d04RawCm);
+    ScanTargetType type = scanClassifyTarget(d05RawCm, d04RawCm);
+    bool isWall = (type == TARGET_OBSTACLE) ||
+                  (d05RawCm < SCAN_MIN_RANGE_CM && d05RawCm != ECHO_ERROR_TIMEOUT);
+
+    if (isWall)
+    {
+      wallHits++;
+      lastDistCm = d05RawCm;
+    }
+    else if (lastDistCm < 0.0f && d05RawCm >= 0.0f)
+    {
+      lastDistCm = d05RawCm;
+    }
+
+    debugScan(d05RawCm, d04RawCm, angleDeg, wallHits, isWall ? TARGET_OBSTACLE : type);
+    HAL_Delay(SCAN_PERIOD_MS);
+  }
+  if (outDistCm) *outDistCm = lastDistCm;
+  return wallHits >= SCAN_CONFIRM_COUNT;
+}
+
+// Tiến tới sát tường cách 10cm, kiểm tra trái/phải và quay sang hướng trống (mặc định trái)
+static void handleWall(void)
+{
+  if (!driveApproach(WALL_STOP_DIST_CM, true))
+    return;
+
+  float leftDistCm = ECHO_ERROR_TIMEOUT;
+  float rightDistCm = ECHO_ERROR_TIMEOUT;
+  bool leftHasWall = checkWallAtAngle(WALL_CHECK_LEFT_ANGLE, &leftDistCm);
+  bool rightHasWall = checkWallAtAngle(WALL_CHECK_RIGHT_ANGLE, &rightDistCm);
+
+  moveServoSmooth(SCAN_HOME_ANGLE);
+  HAL_Delay(SCAN_SETTLE_MS);
+
+  int16_t turnDeg = WALL_TURN_BACK_DEG;
+  if (!leftHasWall)
+    turnDeg = WALL_TURN_LEFT_DEG;
+  else if (!rightHasWall)
+    turnDeg = WALL_TURN_RIGHT_DEG;
+
+  debugWallTurn(leftHasWall, leftDistCm, rightHasWall, rightDistCm, turnDeg);
+  HAL_Delay(WALL_HOLD_MS);
+  motionSpinAngle(turnDeg, SPEED_SPIN_CALM);
+}
+
+// Xoay sơ bộ theo góc cực, quét hẹp vi chỉnh hướng mũi xe rồi tiến tới vật và đưa vào tay gắp
 static bool alignAndApproach(int16_t coarseSpinDeg)
 {
   float fineDist = 0.0f;
   uint8_t fineAngle = SCAN_HOME_ANGLE;
   int16_t fineSpinDeg = 0;
 
-  moveServoSmooth(&htim2, SCAN_HOME_ANGLE);
+  moveServoSmooth(SCAN_HOME_ANGLE);
   HAL_Delay(SCAN_SETTLE_MS);
   motionSpinAngle(coarseSpinDeg, SPEED_SPIN_CALM);
 
@@ -138,7 +156,7 @@ static bool alignAndApproach(int16_t coarseSpinDeg)
   }
   debugAlign(coarseSpinDeg, fineAngle, fineSpinDeg, fineDist, fineFound);
 
-  return drivePid();
+  return driveApproach(PID_DIST_TARGET_CM, false);
 }
 
 void agvInit(void)
@@ -154,8 +172,12 @@ void agvRun(void)
   float distanceCm = 0.0f;
   uint8_t angleDeg = SCAN_HOME_ANGLE;
 
-  if (arrived || scanForObject(&distanceCm, &angleDeg) != SCAN_OBJECT_FOUND)
+  if (arrived)
     return;
 
-  arrived = alignAndApproach((int16_t)SCAN_HOME_ANGLE - (int16_t)angleDeg);
+  ScanStatus status = scanForObject(&distanceCm, &angleDeg);
+  if (status == SCAN_OBJECT_FOUND)
+    arrived = alignAndApproach((int16_t)SCAN_HOME_ANGLE - (int16_t)angleDeg);
+  else if (status == SCAN_WALL_FOUND)
+    handleWall();
 }

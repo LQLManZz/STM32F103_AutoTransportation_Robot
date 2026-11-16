@@ -29,4 +29,10 @@ void motorSetDutyRaw(MotorId motor, MotorDir dir, uint16_t duty);
 void motorStopAll(void);
 void motorBrakeAll(void);
 
+// Lấy mức % PWM hiện tại (0 - 100) của một bánh để hiển thị debug
+uint8_t motorGetSpeedPercent(MotorId motor);
+
+// Lấy trạng thái chiều quay hiện tại của một bánh
+MotorDir motorGetDir(MotorId motor);
+
 #endif // MOTOR_H

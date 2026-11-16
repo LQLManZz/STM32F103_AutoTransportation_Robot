@@ -1,20 +1,18 @@
-#ifndef SERVO
-#define SERVO
+#ifndef SERVO_H
+#define SERVO_H
 
 #include "stm32f1xx_hal.h"
 
-typedef enum
-{
-  SERVO_FORWARD = 0,  
-  SERVO_REVERSE       
-} ServoDirection;
+// Bật PWM servo và đưa về góc HOME
+void servoInit(void);
 
-void setServoAngle(TIM_HandleTypeDef *htim, uint8_t angle);
+// Đặt góc servo trực tiếp (0°..180°)
+void setServoAngle(uint8_t angleDeg);
 
-void moveServoSmooth(TIM_HandleTypeDef *htim, uint8_t target);
+// Quay servo dần tới góc mục tiêu, giảm rung cảm biến
+void moveServoSmooth(uint8_t targetDeg);
 
-uint8_t getServoAngle(TIM_HandleTypeDef *htim);
+// Đọc góc servo hiện tại từ độ rộng xung PWM
+uint8_t getServoAngle(void);
 
-void setServoRange(TIM_HandleTypeDef *htim, uint8_t angleRange, ServoDirection direction);
-
-#endif
+#endif // SERVO_H

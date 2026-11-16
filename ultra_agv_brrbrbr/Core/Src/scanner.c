@@ -5,8 +5,6 @@
 #include "srf05.h"
 #include <stdbool.h>
 
-extern TIM_HandleTypeDef htim2;
-
 ScanTargetType scanClassifyTarget(float d05RawCm, float d04RawCm)
 {
   if (d05RawCm < SCAN_MIN_RANGE_CM || d05RawCm > SCAN_MAX_RANGE_CM)
@@ -21,11 +19,12 @@ ScanTargetType scanClassifyTarget(float d05RawCm, float d04RawCm)
   return TARGET_OBJECT;
 }
 
-// Đo liên tục SCAN_DWELL_MS tại góc hiện tại, true khi thấy vật cần gắp SCAN_CONFIRM_COUNT lần liên tiếp
-static bool scanDwell(float *distanceCm, uint8_t *angleDeg)
+// Đo liên tục SCAN_DWELL_MS tại góc angleDeg; detectWall = true cho phép bắt tường ở hướng thẳng
+static ScanStatus scanDwell(uint8_t angleDeg, bool detectWall, float *distanceCm, uint8_t *outAngleDeg)
 {
   uint32_t start = HAL_GetTick();
   uint8_t hitCount = 0;
+  uint8_t wallCount = 0;
 
   while ((HAL_GetTick() - start) < SCAN_DWELL_MS)
   {
@@ -33,56 +32,67 @@ static bool scanDwell(float *distanceCm, uint8_t *angleDeg)
     float d04RawCm = ECHO_ERROR_TIMEOUT;
     measureDualDistanceCM(&d05RawCm, &d04RawCm);
 
-    uint8_t angle = getServoAngle(&htim2);
     ScanTargetType type = scanClassifyTarget(d05RawCm, d04RawCm);
     hitCount = (type == TARGET_OBJECT) ? (uint8_t)(hitCount + 1u) : 0u;
+    wallCount = (detectWall && type == TARGET_OBSTACLE) ? (uint8_t)(wallCount + 1u) : 0u;
 
-    debugScan(d05RawCm, d04RawCm, angle, hitCount, type);
+    debugScan(d05RawCm, d04RawCm, angleDeg, hitCount, type);
     HAL_Delay(SCAN_PERIOD_MS);
 
     if (hitCount >= SCAN_CONFIRM_COUNT)
     {
       *distanceCm = d05RawCm;
-      *angleDeg = angle;
+      *outAngleDeg = angleDeg;
       HAL_Delay(SCAN_FOUND_HOLD_MS);
-      return true;
+      return SCAN_OBJECT_FOUND;
     }
+    if (wallCount >= SCAN_CONFIRM_COUNT)
+    {
+      *distanceCm = d05RawCm;
+      *outAngleDeg = angleDeg;
+      debugWallDetected(d05RawCm, d04RawCm);
+      HAL_Delay(WALL_HOLD_MS);
+      return SCAN_WALL_FOUND;
+    }
+  }
+  return ERROR_NO_OBJECTIVE;
+}
+
+// Quét từng bước stepDeg từ HOME tới biên 0°..180°, dừng khi thấy vật cần gắp
+static bool scanSweep(int16_t stepDeg, float *distanceCm, uint8_t *angleDeg)
+{
+  for (int16_t a = (int16_t)SCAN_HOME_ANGLE + stepDeg;
+       a >= 0 && a <= (int16_t)SERVO_MAX_ANGLE_DEG;
+       a += stepDeg)
+  {
+    moveServoSmooth((uint8_t)a);
+    HAL_Delay(SCAN_SETTLE_MS);
+    if (scanDwell((uint8_t)a, false, distanceCm, angleDeg) == SCAN_OBJECT_FOUND)
+      return true;
   }
   return false;
 }
 
-// Quay từng SCAN_STEP_DEG theo chiều dir tới hết 0°..180°, dừng khi thấy vật cần gắp
-static bool scanSweep(ServoDirection dir, float *distanceCm, uint8_t *angleDeg)
-{
-  for (;;)
-  {
-    uint8_t angle = getServoAngle(&htim2);
-    if (dir == SERVO_FORWARD ? (angle + SCAN_STEP_DEG > SERVO_MAX_ANGLE_DEG) : (angle < SCAN_STEP_DEG))
-      return false;
-
-    setServoRange(&htim2, SCAN_STEP_DEG, dir);
-    HAL_Delay(SCAN_SETTLE_MS);
-    if (scanDwell(distanceCm, angleDeg))
-      return true;
-  }
-}
-
 void scanInit(void)
 {
-  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
-  setServoAngle(&htim2, SCAN_HOME_ANGLE);
+  servoInit();
 }
 
 ScanStatus scanForObject(float *distanceCm, uint8_t *angleDeg)
 {
-  moveServoSmooth(&htim2, SCAN_HOME_ANGLE);
+  debugDecision("SCANNING");
+  moveServoSmooth(SCAN_HOME_ANGLE);
   HAL_Delay(SCAN_SETTLE_MS);
-  if (scanDwell(distanceCm, angleDeg) || scanSweep(SERVO_FORWARD, distanceCm, angleDeg))
+  ScanStatus status = scanDwell(SCAN_HOME_ANGLE, true, distanceCm, angleDeg);
+  if (status != ERROR_NO_OBJECTIVE)
+    return status;
+
+  if (scanSweep((int16_t)SCAN_STEP_DEG, distanceCm, angleDeg))
     return SCAN_OBJECT_FOUND;
 
-  moveServoSmooth(&htim2, SCAN_HOME_ANGLE);
+  moveServoSmooth(SCAN_HOME_ANGLE);
   HAL_Delay(SCAN_SETTLE_MS);
-  return scanSweep(SERVO_REVERSE, distanceCm, angleDeg) ? SCAN_OBJECT_FOUND : ERROR_NO_OBJECTIVE;
+  return scanSweep(-(int16_t)SCAN_STEP_DEG, distanceCm, angleDeg) ? SCAN_OBJECT_FOUND : ERROR_NO_OBJECTIVE;
 }
 
 ScanStatus scanFine(float *distanceCm, uint8_t *angleDeg)
@@ -90,9 +100,10 @@ ScanStatus scanFine(float *distanceCm, uint8_t *angleDeg)
   float bestDist = SCAN_MAX_RANGE_CM + 1.0f;
   uint8_t bestAngle = SCAN_HOME_ANGLE;
 
+  debugDecision("SCANNING");
   for (uint8_t a = SCAN_FINE_MIN_DEG; a <= SCAN_FINE_MAX_DEG; a += SCAN_FINE_STEP_DEG)
   {
-    setServoAngle(&htim2, a);
+    setServoAngle(a);
     HAL_Delay(SCAN_FINE_SETTLE_MS);
 
     float d05RawCm = ECHO_ERROR_TIMEOUT;
@@ -107,7 +118,7 @@ ScanStatus scanFine(float *distanceCm, uint8_t *angleDeg)
     }
     debugScanFine(a, d05RawCm, d04RawCm, type, bestDist, bestAngle);
   }
-  moveServoSmooth(&htim2, SCAN_HOME_ANGLE);
+  moveServoSmooth(SCAN_HOME_ANGLE);
   HAL_Delay(SCAN_SETTLE_MS);
   if (bestDist > SCAN_MAX_RANGE_CM)
     return ERROR_NO_OBJECTIVE;

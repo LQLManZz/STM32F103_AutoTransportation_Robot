@@ -26,19 +26,22 @@ static void oledDrawLine(uint8_t line, const char *text)
   uint8_t buf[2][OLED_WIDTH_PX] = {0};
   uint8_t col = 0;
 
-  for (; *text != '\0' && col + 12u <= OLED_WIDTH_PX; text++)
+  for (; *text != '\0' && col + 6u <= OLED_WIDTH_PX; text++)
   {
+    uint8_t ch = (uint8_t)*text;
+    if (ch < ' ' || ch > '~') ch = ' ';
+
     for (uint8_t i = 0; i < 6u; i++)
     {
-      uint8_t bits = (i < 5u) ? font5x7[(uint8_t)*text - ' '][i] : 0u;
+      uint8_t bits = (i < 5u) ? font5x7[ch - ' '][i] : 0u;
       uint16_t wide = 0;
 
       for (uint8_t b = 0; b < 8u; b++)
         if (bits & (1u << b)) wide |= 3u << (2u * b);
 
-      buf[0][col] = buf[0][col + 1] = (uint8_t)wide;
-      buf[1][col] = buf[1][col + 1] = (uint8_t)(wide >> 8);
-      col += 2u;
+      buf[0][col] = (uint8_t)wide;
+      buf[1][col] = (uint8_t)(wide >> 8);
+      col++;
     }
   }
 

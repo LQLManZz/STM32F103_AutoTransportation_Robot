@@ -8,6 +8,9 @@
 // Khởi tạo màn hình OLED (serial dùng sẵn UART1)
 void debugInit(void);
 
+// Cập nhật dòng 2 quyết định hệ thống (FORWARD, BACKWARD, TURN-90R, SCANNING...) và dòng 4 PWM
+void debugDecision(const char *decision);
+
 // Báo thông số thực tế mỗi lần đo khi quét thô
 void debugScan(float d05RawCm, float d04RawCm, uint8_t angleDeg, uint8_t hitCount, ScanTargetType type);
 
@@ -18,15 +21,17 @@ void debugScanFine(uint8_t angleDeg, float d05RawCm, float d04RawCm, ScanTargetT
 // Báo kết quả xoay căn hướng thô và vi chỉnh tinh
 void debugAlign(int16_t coarseSpinDeg, uint8_t fineAngleDeg, int16_t fineSpinDeg, float bestDistCm, bool fineFound);
 
-// Báo thông số chi tiết từng chu kỳ chạy PID tiếp cận vật
-void debugDrive(uint32_t elapsedMs, float d05RawCm, float d04RawCm, float errorCm,
-                float pTerm, float iTerm, float dTerm, uint8_t pwmPercent, uint8_t lostCount);
+// Báo thông số khi xe chạy tiếp cận vật hoặc tường (không PID)
+void debugApproach(uint32_t elapsedMs, float d05RawCm, float d04RawCm, float targetDistCm, bool wallMode);
 
-// Báo kết thúc hành trình PID (tới đích, mất vật hoặc gặp vật cản)
+// Báo kết thúc hành trình tiếp cận (tới đích, mất vật hoặc gặp vật cản)
 void debugDriveEnd(uint32_t elapsedMs, float d05RawCm, float d04RawCm, uint8_t lostCount, const char *status);
 
-// Báo trạng thái đã xoay bù đưa vật vào phạm vi tay gắp bên phải
-void debugGripReady(float d05RawCm, float d04RawCm, int16_t spinDeg, int16_t advCm);
+// Báo khi phát hiện tường phía trước
+void debugWallDetected(float d05RawCm, float d04RawCm);
+
+// Báo kết quả kiểm tra tường trái/phải và hướng quay quyết định
+void debugWallTurn(bool leftHasWall, float leftDistCm, bool rightHasWall, float rightDistCm, int16_t turnDeg);
 
 // Báo bước đang chạy của kịch bản test động cơ
 void debugMotorTest(const char *step);

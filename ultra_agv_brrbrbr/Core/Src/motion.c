@@ -1,5 +1,7 @@
 #include "motion.h"
 #include "project_config.h"
+#include "debug.h"
+#include <stdio.h>
 #include <stdlib.h>
 
 void motionInit(void)
@@ -7,54 +9,71 @@ void motionInit(void)
   motorInit();
 }
 
-static uint8_t addOffset(uint8_t speedPercent, int8_t offset)
-{
-  int16_t s = (int16_t)speedPercent + offset;
-  return (uint8_t)(s < 0 ? 0 : (s > 100 ? 100 : s));
-}
-
-static void setBoth(MotorDir dirL, int8_t trimL, MotorDir dirR, int8_t trimR, uint8_t speedPercent)
+static void setBoth(MotorDir dirL, MotorDir dirR, uint8_t speedPercent, const char *decision)
 {
   if (speedPercent == 0)
   {
-    motorStopAll();
+    motionStop();
     return;
   }
-  motorSetSpeed(MOTOR_LEFT, dirL, addOffset(speedPercent, trimL));
-  motorSetSpeed(MOTOR_RIGHT, dirR, addOffset(speedPercent, trimR));
+  motorSetSpeed(MOTOR_LEFT, dirL, speedPercent);
+  motorSetSpeed(MOTOR_RIGHT, dirR, speedPercent);
+  if (decision)
+    debugDecision(decision);
 }
 
 static void motionRun(MotorDir dir, uint8_t speedPercent)
 {
-  setBoth(dir, MOTOR_TRIM_LEFT_OFFSET, dir, MOTOR_TRIM_RIGHT_OFFSET, speedPercent);
+  setBoth(dir, dir, speedPercent, (dir == MOTOR_FORWARD) ? "FORWARD" : "BACKWARD");
+}
+
+static void brakePulseOpposite(MotorId motor, MotorDir prevDir)
+{
+  if (prevDir == MOTOR_FORWARD)
+    motorSetDutyRaw(motor, MOTOR_BACKWARD, BRAKE_REV_DUTY);
+  else if (prevDir == MOTOR_BACKWARD)
+    motorSetDutyRaw(motor, MOTOR_FORWARD, BRAKE_REV_DUTY);
+  else
+    motorSetDutyRaw(motor, MOTOR_BRAKE, 0);
 }
 
 void motionForward(uint8_t speedPercent)  { motionRun(MOTOR_FORWARD, speedPercent); }
 void motionBackward(uint8_t speedPercent) { motionRun(MOTOR_BACKWARD, speedPercent); }
-void motionBrake(void)                    { motorBrakeAll(); }
-void motionStop(void)                     { motorStopAll(); }
 
-void motionSpinLeft(uint8_t speedPercent)
+void motionBrake(void)
 {
-  setBoth(MOTOR_BACKWARD, SPIN_TRIM_LEFT_OFFSET, MOTOR_FORWARD, SPIN_TRIM_RIGHT_OFFSET, speedPercent);
+  MotorDir dirL = motorGetDir(MOTOR_LEFT);
+  MotorDir dirR = motorGetDir(MOTOR_RIGHT);
+
+  if (dirL == MOTOR_FORWARD || dirL == MOTOR_BACKWARD ||
+      dirR == MOTOR_FORWARD || dirR == MOTOR_BACKWARD)
+  {
+    brakePulseOpposite(MOTOR_LEFT, dirL);
+    brakePulseOpposite(MOTOR_RIGHT, dirR);
+    HAL_Delay(BRAKE_REV_PULSE_MS);
+  }
+  motorBrakeAll();
+  debugDecision("BRAKE");
 }
 
-void motionSpinRight(uint8_t speedPercent)
-{
-  setBoth(MOTOR_FORWARD, SPIN_TRIM_LEFT_OFFSET, MOTOR_BACKWARD, SPIN_TRIM_RIGHT_OFFSET, speedPercent);
-}
+void motionStop(void)                     { motorStopAll(); debugDecision("STOP"); }
 
 void motionSpinAngle(int16_t angleDeg, uint8_t speedPercent)
 {
   if (angleDeg == 0 || speedPercent == 0)
     return;
 
-  if (angleDeg > 0) motionSpinRight(speedPercent);
-  else motionSpinLeft(speedPercent);
+  char decision[OLED_LINE_CHARS + 1];
+  snprintf(decision, sizeof(decision), "TURN-%d%c", abs(angleDeg), (angleDeg > 0) ? 'R' : 'L');
+
+  MotorDir dirL = (angleDeg > 0) ? MOTOR_FORWARD : MOTOR_BACKWARD;
+  MotorDir dirR = (angleDeg > 0) ? MOTOR_BACKWARD : MOTOR_FORWARD;
+  setBoth(dirL, dirR, speedPercent, decision);
 
   HAL_Delay((uint32_t)((float)abs(angleDeg) * SPIN_MS_PER_DEGREE + SPIN_OFFSET_MS));
-  motorBrakeAll();
+  motionBrake();
   HAL_Delay(SPIN_BRAKE_DELAY_MS);
+  motionStop();
 }
 
 static void rampRun(MotorDir dir, uint8_t fromSpeed, uint8_t toSpeed, uint32_t durationMs)
@@ -96,6 +115,7 @@ void motionDriveDistance(int16_t distanceCm, uint8_t speedPercent)
     HAL_Delay(totalMs - rampUpMs - rampDownMs);
     rampRun(dir, speedPercent, startSpeed, rampDownMs);
   }
-  motorBrakeAll();
+  motionBrake();
   HAL_Delay(DRIVE_BRAKE_DELAY_MS);
+  motionStop();
 }

@@ -6,6 +6,7 @@
 typedef enum
 {
   SCAN_OBJECT_FOUND = 0,
+  SCAN_WALL_FOUND,
   ERROR_NO_OBJECTIVE
 } ScanStatus;
 

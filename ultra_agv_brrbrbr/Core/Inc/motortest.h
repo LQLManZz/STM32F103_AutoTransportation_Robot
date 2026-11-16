@@ -16,4 +16,7 @@ void motorTestDirectSpin350(void);
 // Xoay liên tục không ngừng ở tốc độ thấp nhất có thể
 void motorSpinContinuousLowestSpeed(void);
 
+// Chạy thẳng liên tục không ngừng ở tốc độ PWM thấp nhất có thể
+void motorDriveContinuousLowestSpeed(void);
+
 #endif // MOTORTEST_H

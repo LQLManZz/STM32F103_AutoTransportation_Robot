@@ -4,7 +4,7 @@
 // Khởi tạo toàn bộ module của xe
 void agvInit(void);
 
-// Một vòng hoạt động: quét tọa độ cực tìm vật -> xoay + vi chỉnh hướng -> tiến bằng PID -> căn chỉnh vào tay gắp phải
+// Một vòng hoạt động: quét tìm vật/tường -> xoay + vi chỉnh hướng -> chạy tới gần vật (hoặc né tường)
 void agvRun(void);
 
 #endif // AGV_H

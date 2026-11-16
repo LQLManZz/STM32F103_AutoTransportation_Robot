@@ -54,31 +54,6 @@ static void updateEchoChannel(GPIO_TypeDef *port, uint16_t pin, uint32_t nowTick
   }
 }
 
-// Đo độ dài mức "state" trên chân GPIO (us), có timeout; bỏ qua xung nhiễu < 50 us
-uint32_t pulseIn(GPIO_TypeDef *gpio, uint16_t gpioPin, GPIO_PinState state, uint32_t timeoutUs)
-{
-  uint32_t usTicks = SystemCoreClock / 1000000UL;
-  uint32_t timeoutTicks = timeoutUs * usTicks;
-  uint32_t startWait = DWT->CYCCNT;
-
-  while ((DWT->CYCCNT - startWait) < timeoutTicks)
-  {
-    while (HAL_GPIO_ReadPin(gpio, gpioPin) == state)
-      if ((DWT->CYCCNT - startWait) > timeoutTicks) return 0;
-    while (HAL_GPIO_ReadPin(gpio, gpioPin) != state)
-      if ((DWT->CYCCNT - startWait) > timeoutTicks) return 0;
-
-    uint32_t pulseStart = DWT->CYCCNT;
-    while (HAL_GPIO_ReadPin(gpio, gpioPin) == state)
-      if ((DWT->CYCCNT - pulseStart) > timeoutTicks) return 0;
-
-    uint32_t pulseUs = (DWT->CYCCNT - pulseStart) / usTicks;
-    if (pulseUs >= ECHO_MIN_NOISE_US)
-      return pulseUs;
-  }
-  return 0;
-}
-
 void measureDualDistanceCM(float *dist05Cm, float *dist04Cm)
 {
   HAL_GPIO_WritePin(TRIGGER_PORT, TRIGGER_PIN, GPIO_PIN_RESET);
@@ -107,11 +82,4 @@ void measureDualDistanceCM(float *dist05Cm, float *dist04Cm)
 
   if (dist05Cm) *dist05Cm = durationToCm(dur05Us);
   if (dist04Cm) *dist04Cm = durationToCm(dur04Us);
-}
-
-float measureDistanceCM(void)
-{
-  float d05Cm = ECHO_ERROR_TIMEOUT;
-  measureDualDistanceCM(&d05Cm, NULL);
-  return d05Cm;
 }
