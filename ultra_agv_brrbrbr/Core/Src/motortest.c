@@ -5,8 +5,6 @@
 #include "motor.h"
 #include <stdio.h>
 
-static bool done = false;
-
 static void startStep(const char *name)
 {
   debugMotorTest(name);
@@ -46,26 +44,45 @@ static void rampDownPwm(MotorDir dirL, MotorDir dirR, const char *label)
 
 void motorTestRun(void)
 {
+  static const struct
+  {
+    const char *name;
+    bool drive;
+    int16_t val;
+  } steps[] = {
+      {"FORWARD", true, MOTOR_TEST_DRIVE_CM},
+      {"BACKWARD", true, -MOTOR_TEST_DRIVE_CM},
+      {"RIGHT 90", false, 90},
+      {"LEFT 90", false, -90},
+      {"RIGHT 180", false, 180},
+      {"LEFT 180", false, -180},
+  };
+  static bool done = false;
   if (done) return;
 
   debugMotorTest("WAIT");
   HAL_Delay(MOTOR_TEST_START_DELAY_MS);
 
-  startStep("FORWARD");
-  motionDriveDistance(MOTOR_TEST_DRIVE_CM, MOTOR_TEST_DRIVE_SPEED);
-  startStep("BACKWARD");
-  motionDriveDistance(-MOTOR_TEST_DRIVE_CM, MOTOR_TEST_DRIVE_SPEED);
-  startStep("RIGHT 90");
-  motionSpinAngle(90, SPEED_SPIN_CALM);
-  startStep("LEFT 90");
-  motionSpinAngle(-90, SPEED_SPIN_CALM);
-  startStep("RIGHT 180");
-  motionSpinAngle(180, SPEED_SPIN_CALM);
-  startStep("LEFT 180");
-  motionSpinAngle(-180, SPEED_SPIN_CALM);
+  for (uint8_t i = 0; i < (uint8_t)(sizeof(steps) / sizeof(steps[0])); i++)
+  {
+    startStep(steps[i].name);
+    if (steps[i].drive)
+      motionDriveDistance(steps[i].val, MOTOR_TEST_DRIVE_SPEED);
+    else
+      motionSpinAngle(steps[i].val, SPEED_SPIN_CALM);
+  }
 
   debugMotorTest("DONE");
   done = true;
+}
+
+void motorTestPidRun(void)
+{
+  debugMotorTest("WAIT");
+  HAL_Delay(MOTOR_TEST_START_DELAY_MS);
+
+  startStep("FORWARD");
+  motionDriveTimePid(MOTOR_FORWARD, 0u, PID_TARGET_DRIVE_RPM);
 }
 
 void motorTestMinPwm(void)

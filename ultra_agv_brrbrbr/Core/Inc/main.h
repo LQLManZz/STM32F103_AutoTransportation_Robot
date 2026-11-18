@@ -83,6 +83,12 @@ void Error_Handler(void);
 #define Echo_SRF05_GPIO_Port GPIOA
 #define Echo_SRF04_Pin GPIO_PIN_12
 #define Echo_SRF04_GPIO_Port GPIOA
+#define Encoder_R_Pin GPIO_PIN_6
+#define Encoder_R_GPIO_Port GPIOB
+#define Encoder_R_EXTI_IRQn EXTI9_5_IRQn
+#define Encoder_L_Pin GPIO_PIN_7
+#define Encoder_L_GPIO_Port GPIOB
+#define Encoder_L_EXTI_IRQn EXTI9_5_IRQn
 
 /* USER CODE BEGIN Private defines */
 

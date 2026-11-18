@@ -115,4 +115,29 @@
 #define PWM_TEST_KICK_DUTY 450u       // Xung mồi kickstart phá ma sát nghỉ (45%)
 #define PWM_TEST_KICK_MS 40u          // Thời gian xung mồi (ms)
 
+// --- Encoder quang chữ U 20 lỗ (PB7 = EXTI7 bánh trái, PB6 = EXTI6 bánh phải) ---
+#define ENC_LEFT_PIN Encoder_L_Pin   // PB7 - ngắt ngoài xung encoder bánh trái
+#define ENC_RIGHT_PIN Encoder_R_Pin  // PB6 - ngắt ngoài xung encoder bánh phải
+#define ENC_PULSES_PER_REV 20u       // Số lỗ trên 1 vòng đĩa encoder
+#define ENC_DEBOUNCE_US 6000u        // Lọc nhiễu rung sườn xung quang học (6 ms)
+#define ENC_STOP_TIMEOUT_MS 250u     // Quá thời gian này không có xung thì coi như bánh dừng (ms)
+#define ENC_SAMPLE_MS 100u           // Chu kỳ cập nhật tốc độ lên OLED và UART khi xe chạy (ms)
+#define WHEEL_CIRCUMFERENCE_CM 20.4f // Chu vi bánh xe TT đường kính 65mm (cm)
+#define ENC_SPIN_360_PULSES 44u      // Số xung mỗi bánh để xe xoay tại chỗ đủ 360°
+
+#define PID_TARGET_DRIVE_RPM 110u    // Tốc độ mục tiêu khi chạy thẳng bằng PID (vòng/phút)
+#define PID_TARGET_SPIN_RPM 95u      // Tốc độ mục tiêu khi xoay tại chỗ bằng PID (vòng/phút)
+#define PID_TEST_DRIVE_MS 4000u      // Thời gian chạy thẳng/lùi liên tục khi test PID (4 giây)
+#define PID_LOOP_PERIOD_MS 50u       // Chu kỳ tính toán vòng lặp PID (ms)
+#define PID_MOVE_TIMEOUT_MS 5000u    // Timeout an toàn cho mỗi động tác PID theo xung (ms)
+#define PID_MIN_DUTY 180             // Ngưỡng duty thấp nhất khi chạy PID
+#define PID_BASE_LEFT_DUTY 420       // Duty nền bánh trái (~40% tốc độ)
+#define PID_BASE_RIGHT_DUTY 485      // Duty nền bánh phải (bù tỉ lệ 169/147 do bánh phải nặng hơn)
+#define PID_KP 2.0f                  // Hệ số P giữ tốc độ RPM
+#define PID_KI 0.6f                  // Hệ số I bù tải giữ tốc độ RPM
+#define PID_KD 0.2f                  // Hệ số D giảm vọt lố tốc độ
+#define PID_SYNC_KP 20.0f            // Hệ số P đồng bộ số xung 2 bánh (duty / xung lệch)
+#define PID_SYNC_KD 1.5f             // Hệ số D đồng bộ vận tốc 2 bánh (duty / rpm lệch)
+#define PID_INTEGRAL_MAX 400.0f      // Giới hạn chống bão hòa tích phân (anti-windup)
+
 #endif // PROJECT_CONFIG_H

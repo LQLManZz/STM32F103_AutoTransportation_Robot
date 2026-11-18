@@ -1,5 +1,6 @@
 #include "debug.h"
 #include "project_config.h"
+#include "encoder.h"
 #include "motor.h"
 #include "oled.h"
 #include <stdio.h>
@@ -15,8 +16,17 @@ static const char *targetTypeToStr(ScanTargetType type)
 
 static void oledPrintCurrentPwm(void)
 {
-  oledPrintLine(3, "L:%2u%% | R:%2u%%",
-                motorGetSpeedPercent(MOTOR_LEFT), motorGetSpeedPercent(MOTOR_RIGHT));
+  oledPrintLine(3, "L:%3u | R:%3u rpm",
+                encoderGetRpm(MOTOR_LEFT), encoderGetRpm(MOTOR_RIGHT));
+}
+
+static void uartPrintMotorTelemetry(const char *step)
+{
+  printf("TEST step=%s L=%urpm R=%urpm pL=%lu pR=%lu dL=%u dR=%u\r\n",
+         step,
+         encoderGetRpm(MOTOR_LEFT), encoderGetRpm(MOTOR_RIGHT),
+         encoderGetPulses(MOTOR_LEFT), encoderGetPulses(MOTOR_RIGHT),
+         motorGetDutyRaw(MOTOR_LEFT), motorGetDutyRaw(MOTOR_RIGHT));
 }
 
 static void oledUpdate(uint8_t angleDeg, float d05RawCm, float d04RawCm,
@@ -44,6 +54,7 @@ void debugInit(void)
 
 void debugDecision(const char *decision)
 {
+  uartPrintMotorTelemetry(decision);
   oledPrintLine(1, "%s", decision);
   oledPrintCurrentPwm();
 }
@@ -82,12 +93,12 @@ void debugAlign(int16_t coarseSpinDeg, uint8_t fineAngleDeg, int16_t fineSpinDeg
 
 void debugApproach(uint32_t elapsedMs, float d05RawCm, float d04RawCm, float targetDistCm, bool wallMode)
 {
-  uint8_t leftPct = motorGetSpeedPercent(MOTOR_LEFT);
-  uint8_t rightPct = motorGetSpeedPercent(MOTOR_RIGHT);
+  uint16_t leftRpm = encoderGetRpm(MOTOR_LEFT);
+  uint16_t rightRpm = encoderGetRpm(MOTOR_RIGHT);
   const char *status = wallMode ? "OBSTACLE_FND" : "OBJ_FOUND";
 
-  printf("%s t=%4lums d05_raw=%.1f d04_raw=%.1f target=%.1f L=%u%% R=%u%%\r\n",
-         wallMode ? "WALL_DRV" : "DRV", elapsedMs, d05RawCm, d04RawCm, targetDistCm, leftPct, rightPct);
+  printf("%s t=%4lums d05_raw=%.1f d04_raw=%.1f target=%.1f L=%urpm R=%urpm\r\n",
+         wallMode ? "WALL_DRV" : "DRV", elapsedMs, d05RawCm, d04RawCm, targetDistCm, leftRpm, rightRpm);
   oledUpdate(SCAN_HOME_ANGLE, d05RawCm, d04RawCm, "FORWARD", status);
 }
 
@@ -119,7 +130,7 @@ void debugWallTurn(bool leftHasWall, float leftDistCm, bool rightHasWall, float 
 
 void debugMotorTest(const char *step)
 {
-  printf("TEST step=%s\r\n", step);
+  uartPrintMotorTelemetry(step);
   oledPrintLine(1, "%s", step);
   oledPrintLine(2, "MOTOR_TEST");
   oledPrintCurrentPwm();

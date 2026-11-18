@@ -4,6 +4,7 @@
 extern TIM_HandleTypeDef htim3;
 
 static uint8_t motorPwmPercent[2] = {0, 0};
+static uint16_t motorCurDuty[2] = {0, 0};
 static MotorDir motorCurDir[2] = {MOTOR_STOP, MOTOR_STOP};
 
 void motorInit(void)
@@ -43,6 +44,7 @@ void motorSetDutyRaw(MotorId motor, MotorDir dir, uint16_t duty)
   else if (dir == MOTOR_STOP) duty = 0;
 
   motorCurDir[motor] = dir;
+  motorCurDuty[motor] = duty;
   motorPwmPercent[motor] = (dir == MOTOR_STOP || dir == MOTOR_BRAKE || duty == 0)
                                ? 0u
                                : (uint8_t)((duty * 100u + (MOTOR_PWM_ARR_MAX / 2u)) / MOTOR_PWM_ARR_MAX);
@@ -74,6 +76,11 @@ void motorBrakeAll(void)
 uint8_t motorGetSpeedPercent(MotorId motor)
 {
   return motorPwmPercent[motor];
+}
+
+uint16_t motorGetDutyRaw(MotorId motor)
+{
+  return motorCurDuty[motor];
 }
 
 MotorDir motorGetDir(MotorId motor)

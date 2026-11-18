@@ -4,6 +4,9 @@
 // Chạy một lần kịch bản test động cơ: tiến, lùi, quay phải/trái 90°, quay phải/trái 180°
 void motorTestRun(void);
 
+// Chạy kịch bản test động cơ PID: tiến thẳng liên tục
+void motorTestPidRun(void);
+
 // Kịch bản test tìm ngưỡng PWM thấp nhất khi chạy tiến
 void motorTestMinPwm(void);
 

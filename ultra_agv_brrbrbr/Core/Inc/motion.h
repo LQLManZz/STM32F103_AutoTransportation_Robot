@@ -17,4 +17,13 @@ void motionSpinAngle(int16_t angleDeg, uint8_t speedPercent);
 // Chạy thẳng theo cự ly có tăng/giảm tốc: > 0 tiến, < 0 lùi
 void motionDriveDistance(int16_t distanceCm, uint8_t speedPercent);
 
+// Xoay tại chỗ theo góc dùng PID 2 encoder: > 0 sang phải, < 0 sang trái
+void motionSpinAnglePid(int16_t angleDeg, uint16_t targetRpm);
+
+// Chạy thẳng theo cự ly dùng PID 2 encoder: > 0 tiến, < 0 lùi
+void motionDriveDistancePid(int16_t distanceCm, uint16_t targetRpm);
+
+// Chạy thẳng hoặc lùi dùng PID 2 encoder theo thời gian (durationMs = 0: chạy liên tục)
+void motionDriveTimePid(MotorDir dir, uint32_t durationMs, uint16_t targetRpm);
+
 #endif // MOTION_H
