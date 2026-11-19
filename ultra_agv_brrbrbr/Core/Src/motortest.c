@@ -1,8 +1,11 @@
 #include "motortest.h"
 #include "project_config.h"
 #include "debug.h"
+#include "imu.h"
 #include "motion.h"
 #include "motor.h"
+#include "nav.h"
+#include <math.h>
 #include <stdio.h>
 
 static void startStep(const char *name)
@@ -146,4 +149,104 @@ void motorDriveContinuousLowestSpeed(void)
 {
   runContinuousLowest(MOTOR_FORWARD, PWM_TEST_DRIVE_LEFT_DUTY,
                       MOTOR_FORWARD, PWM_TEST_DRIVE_RIGHT_DUTY, "DRIVE");
+}
+
+static void prepareImuBeforeTest(const char *testTitle)
+{
+  debugOledScreen(testTitle, "NEXT: PUT ON FLOOR", "WAIT 2s...", "IMU: CHECKING...");
+  HAL_Delay(2000u);
+
+  if (imuIsReady() || imuInit())
+  {
+    debugOledScreen("IMU: MPU6050 READY", "CALIBRATING GYRO", "KEEP ROBOT STILL!", "WAIT ~1s...");
+    imuCalibrate();
+  }
+  else
+  {
+    debugOledScreen("IMU: NOT FOUND!", "FALLBACK: ENCODER", "CHECK PB8/PB9", "STARTING IN 2s...");
+    HAL_Delay(2000u);
+  }
+}
+
+void motorTestWaypointsRun(void)
+{
+  // Kịch bản mẫu hình vuông 40x40 cm: xuất phát (0, 0, 0°) -> đi qua 4 điểm -> về lại gốc (0, 0, 0°)
+  static const NavPose waypoints[] = {
+      {40.0f,  0.0f,   0.0f},
+      {40.0f, 40.0f,  90.0f},
+      { 0.0f, 40.0f, 180.0f},
+      { 0.0f,  0.0f,   0.0f},
+  };
+  static bool done = false;
+  if (done)
+    return;
+
+  prepareImuBeforeTest("TEST: SQUARE 40x40");
+
+  navResetPose();
+  navFollowWaypoints(waypoints, (uint8_t)(sizeof(waypoints) / sizeof(waypoints[0])));
+
+  NavPose endPose = navGetPose();
+  char finalLine[OLED_LINE_CHARS + 1];
+  snprintf(finalLine, sizeof(finalLine), "END:%d,%d %dd",
+           (int)lroundf(endPose.xCm), (int)lroundf(endPose.yCm), (int)lroundf(endPose.thetaDeg));
+  debugOledScreen("ALL 4 PTS DONE!", finalLine,
+                  imuIsReady() ? "MODE: IMU+ENC" : "MODE: ENCODER",
+                  "PRESS RST TO REDO");
+  printf("NAV_ALL_DONE end=(%.1f,%.1f,%.1f) imu=%d\r\n",
+         endPose.xCm, endPose.yCm, endPose.thetaDeg, imuIsReady() ? 1 : 0);
+  done = true;
+}
+
+void motorTestMotionSuiteRun(void)
+{
+  static const struct
+  {
+    const char *label;
+    bool isDrive;
+    int16_t value; // >0 tiến / quay phải; <0 lùi / quay trái
+  } steps[] = {
+      {"FWD 100cm", true,   100},
+      {"BWD 100cm", true,  -100},
+      {"TURN 45L",  false,  -45},
+      {"TURN 45R",  false,   45},
+      {"TURN 90L",  false,  -90},
+      {"TURN 90R",  false,   90},
+      {"TURN 180L", false, -180},
+      {"TURN 180L", false, -180},
+  };
+  static bool done = false;
+  if (done)
+    return;
+
+  prepareImuBeforeTest("TEST: 1m & ANGLES");
+
+  uint8_t total = (uint8_t)(sizeof(steps) / sizeof(steps[0]));
+  uint8_t previewSec = (uint8_t)((NAV_STEP_PREVIEW_MS + 999u) / 1000u);
+
+  for (uint8_t i = 0u; i < total; i++)
+  {
+    for (uint8_t sec = previewSec; sec > 0u; sec--)
+    {
+      debugStepPreview((uint8_t)(i + 1u), total, steps[i].label, sec, imuIsReady());
+      HAL_Delay(1000u);
+    }
+
+    char stepHeader[OLED_LINE_CHARS + 1];
+    snprintf(stepHeader, sizeof(stepHeader), "STEP %u/%u", (uint8_t)(i + 1u), total);
+    debugOledScreen(stepHeader, NULL, NULL, NULL);
+
+    if (steps[i].isDrive)
+      motionDriveDistancePid(steps[i].value, PID_TARGET_DRIVE_RPM);
+    else
+      motionSpinAnglePid(steps[i].value, PID_TARGET_SPIN_RPM);
+
+    HAL_Delay(NAV_STEP_PAUSE_MS);
+  }
+
+  debugOledScreen("TEST 8/8 DONE!", "ALL STEPS FINISHED",
+                  imuIsReady() ? "MODE: IMU+ENC" : "MODE: ENCODER",
+                  "PRESS RST TO REDO");
+  printf("TEST_SUITE_DONE imu=%d\r\n", imuIsReady() ? 1 : 0);
+  done = true;
 }

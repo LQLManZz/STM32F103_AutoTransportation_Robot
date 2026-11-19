@@ -17,6 +17,13 @@ typedef enum
   TARGET_OBSTACLE  // Cả 2 cảm biến cùng thấy -> Vật cản cao >= 11cm (OBSTACLE)
 } ScanTargetType;
 
+typedef enum
+{
+  SCAN_SIDE_BOTH = 0, // Quét cả 2 bên (0°..180°)
+  SCAN_SIDE_LEFT,     // Chỉ quét nửa trái (90°..180°), dùng khi tường ở bên phải
+  SCAN_SIDE_RIGHT     // Chỉ quét nửa phải (90°..0°), dùng khi tường ở bên trái
+} ScanSide;
+
 // Bật PWM servo và đưa servo về HOME
 void scanInit(void);
 
@@ -25,6 +32,9 @@ ScanTargetType scanClassifyTarget(float d05RawCm, float d04RawCm);
 
 // Quét xuôi từ HOME, về HOME rồi quét ngược; thấy vật cần gắp thì trả tọa độ cực: cự ly (cm) và góc servo (độ)
 ScanStatus scanForObject(float *distanceCm, uint8_t *angleDeg);
+
+// Quét phía trước và một phía chỉ định (tránh quét vào mặt tường đang men theo)
+ScanStatus scanSideArc(ScanSide side, float *distanceCm, uint8_t *angleDeg);
 
 // Quét góc hẹp quanh HOME (70°..110°) để vi chỉnh hướng mũi xe vào vật cần gắp gần nhất
 ScanStatus scanFine(float *distanceCm, uint8_t *angleDeg);

@@ -8,6 +8,9 @@
 // Khởi tạo màn hình OLED (serial dùng sẵn UART1)
 void debugInit(void);
 
+// Định dạng số thực 1 chữ số thập phân (không phụ thuộc cờ -u _printf_float)
+const char *debugF1(float v);
+
 // Cập nhật dòng 2 quyết định hệ thống (FORWARD, BACKWARD, TURN-90R, SCANNING...) và dòng 4 PWM
 void debugDecision(const char *decision);
 
@@ -38,5 +41,21 @@ void debugMotorTest(const char *step);
 
 // Báo thông số khi test tìm ngưỡng PWM tối thiểu: duty (0-999), % PWM, trạng thái
 void debugMotorPwmTest(uint16_t duty, uint8_t percent, const char *status);
+
+// Hiển thị trực tiếp 4 dòng lên OLED (truyền NULL để giữ nguyên dòng cũ)
+void debugOledScreen(const char *line0, const char *line1, const char *line2, const char *line3);
+
+// Báo trạng thái điều hướng theo tọa độ Turn - Drive - Turn
+void debugNavWaypoint(uint8_t idx, uint8_t total, float curX, float curY, float curThetaDeg,
+                      float targetX, float targetY, float targetThetaDeg, const char *phase);
+
+// Hiển thị đếm ngược hoạt động sắp thực hiện lên OLED trước khi xe chạy
+void debugNavPreview(uint8_t idx, uint8_t total, float curX, float curY, float curThetaDeg,
+                     float targetX, float targetY, float targetThetaDeg,
+                     const char *nextAction, uint8_t secLeft, bool imuReady);
+
+// Hiển thị đếm ngược bước tiếp theo của kịch bản test lên OLED
+void debugStepPreview(uint8_t stepIdx, uint8_t stepTotal, const char *nextAction,
+                      uint8_t secLeft, bool imuReady);
 
 #endif // DEBUG_H

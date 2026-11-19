@@ -26,4 +26,10 @@ void motionDriveDistancePid(int16_t distanceCm, uint16_t targetRpm);
 // Chạy thẳng hoặc lùi dùng PID 2 encoder theo thời gian (durationMs = 0: chạy liên tục)
 void motionDriveTimePid(MotorDir dir, uint32_t durationMs, uint16_t targetRpm);
 
+// Khởi tạo mốc giữ hướng bằng IMU + encoder trước khi tiến tiếp cận vật/tường
+void motionForwardHoldStart(void);
+
+// Cập nhật một bước chạy thẳng có giữ hướng bằng IMU (fallback encoder nếu chưa có IMU)
+void motionForwardHoldStep(uint8_t speedPercent);
+
 #endif // MOTION_H

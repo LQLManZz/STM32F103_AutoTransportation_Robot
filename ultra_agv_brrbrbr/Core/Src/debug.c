@@ -1,8 +1,11 @@
 #include "debug.h"
 #include "project_config.h"
+#include "blackbox.h"
 #include "encoder.h"
+#include "imu.h"
 #include "motor.h"
 #include "oled.h"
+#include <math.h>
 #include <stdio.h>
 
 extern UART_HandleTypeDef huart1;
@@ -22,17 +25,18 @@ static void oledPrintCurrentPwm(void)
 
 static void uartPrintMotorTelemetry(const char *step)
 {
-  printf("TEST step=%s L=%urpm R=%urpm pL=%lu pR=%lu dL=%u dR=%u\r\n",
+  printf("TEST step=%s L=%urpm R=%urpm pL=%lu pR=%lu dL=%u dR=%u H=%s\r\n",
          step,
          encoderGetRpm(MOTOR_LEFT), encoderGetRpm(MOTOR_RIGHT),
          encoderGetPulses(MOTOR_LEFT), encoderGetPulses(MOTOR_RIGHT),
-         motorGetDutyRaw(MOTOR_LEFT), motorGetDutyRaw(MOTOR_RIGHT));
+         motorGetDutyRaw(MOTOR_LEFT), motorGetDutyRaw(MOTOR_RIGHT),
+         debugF1(imuGetHeadingDeg()));
 }
 
 static void oledUpdate(uint8_t angleDeg, float d05RawCm, float d04RawCm,
                        const char *decision, const char *status)
 {
-  oledPrintLine(0, "A:%3u | %.1f-%.1fcm", angleDeg, d05RawCm, d04RawCm);
+  oledPrintLine(0, "A:%3u | %s-%scm", angleDeg, debugF1(d05RawCm), debugF1(d04RawCm));
   if (decision)
     oledPrintLine(1, "%s", decision);
   if (status)
@@ -40,8 +44,27 @@ static void oledUpdate(uint8_t angleDeg, float d05RawCm, float d04RawCm,
   oledPrintCurrentPwm();
 }
 
+const char *debugF1(float v)
+{
+  static char bufs[8][16];
+  static uint8_t idx = 0u;
+  char *b = bufs[idx++ & 7u];
+  int32_t t = (int32_t)lroundf(v * 10.0f);
+  if (t < 0)
+  {
+    t = -t;
+    snprintf(b, 16u, "-%ld.%ld", (long)(t / 10), (long)(t % 10));
+  }
+  else
+  {
+    snprintf(b, 16u, "%ld.%ld", (long)(t / 10), (long)(t % 10));
+  }
+  return b;
+}
+
 int __io_putchar(int ch)
 {
+  blackboxPutChar((char)ch);
   HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, HAL_MAX_DELAY);
   return ch;
 }
@@ -65,8 +88,9 @@ void debugScan(float d05RawCm, float d04RawCm, uint8_t angleDeg, uint8_t hitCoun
   float d04AdjCm = (d04RawCm >= SCAN_MIN_RANGE_CM) ? (d04RawCm - SENSOR_DEPTH_OFFSET_CM) : d04RawCm;
   float diffCm = (d05RawCm >= SCAN_MIN_RANGE_CM && d04RawCm >= SCAN_MIN_RANGE_CM) ? (d04AdjCm - d05RawCm) : 0.0f;
 
-  printf("SCAN ang=%3u d05_raw=%.1f d04_raw=%.1f d04_adj=%.1f diff=%.1f hit=%u/%u status=%s\r\n",
-         angleDeg, d05RawCm, d04RawCm, d04AdjCm, diffCm, hitCount, SCAN_CONFIRM_COUNT, status);
+  printf("SCAN ang=%3u d05_raw=%s d04_raw=%s d04_adj=%s diff=%s hit=%u/%u status=%s\r\n",
+         angleDeg, debugF1(d05RawCm), debugF1(d04RawCm), debugF1(d04AdjCm), debugF1(diffCm),
+         hitCount, SCAN_CONFIRM_COUNT, status);
   oledUpdate(angleDeg, d05RawCm, d04RawCm, "SCANNING", status);
 }
 
@@ -76,8 +100,9 @@ void debugScanFine(uint8_t angleDeg, float d05RawCm, float d04RawCm, ScanTargetT
   const char *status = targetTypeToStr(type);
   float d04AdjCm = (d04RawCm >= SCAN_MIN_RANGE_CM) ? (d04RawCm - SENSOR_DEPTH_OFFSET_CM) : d04RawCm;
 
-  printf("FINE ang=%3u d05_raw=%.1f d04_raw=%.1f d04_adj=%.1f status=%s best_d=%.1f best_ang=%u\r\n",
-         angleDeg, d05RawCm, d04RawCm, d04AdjCm, status, bestDistCm, bestAngleDeg);
+  printf("FINE ang=%3u d05_raw=%s d04_raw=%s d04_adj=%s status=%s best_d=%s best_ang=%u\r\n",
+         angleDeg, debugF1(d05RawCm), debugF1(d04RawCm), debugF1(d04AdjCm),
+         status, debugF1(bestDistCm), bestAngleDeg);
   oledUpdate(angleDeg, d05RawCm, d04RawCm, "SCANNING", status);
 }
 
@@ -85,8 +110,8 @@ void debugAlign(int16_t coarseSpinDeg, uint8_t fineAngleDeg, int16_t fineSpinDeg
 {
   const char *status = fineFound ? "FINE_OK" : "FINE_SKIP";
 
-  printf("ALIGN coarse_spin=%d fine_ang=%u fine_spin=%d best_d=%.1f status=%s\r\n",
-         coarseSpinDeg, fineAngleDeg, fineSpinDeg, bestDistCm, status);
+  printf("ALIGN coarse_spin=%d fine_ang=%u fine_spin=%d best_d=%s status=%s\r\n",
+         coarseSpinDeg, fineAngleDeg, fineSpinDeg, debugF1(bestDistCm), status);
   oledPrintLine(2, "%s", status);
   oledPrintCurrentPwm();
 }
@@ -97,21 +122,23 @@ void debugApproach(uint32_t elapsedMs, float d05RawCm, float d04RawCm, float tar
   uint16_t rightRpm = encoderGetRpm(MOTOR_RIGHT);
   const char *status = wallMode ? "OBSTACLE_FND" : "OBJ_FOUND";
 
-  printf("%s t=%4lums d05_raw=%.1f d04_raw=%.1f target=%.1f L=%urpm R=%urpm\r\n",
-         wallMode ? "WALL_DRV" : "DRV", elapsedMs, d05RawCm, d04RawCm, targetDistCm, leftRpm, rightRpm);
+  printf("%s t=%4lums d05_raw=%s d04_raw=%s target=%s L=%urpm R=%urpm\r\n",
+         wallMode ? "WALL_DRV" : "DRV", elapsedMs,
+         debugF1(d05RawCm), debugF1(d04RawCm), debugF1(targetDistCm), leftRpm, rightRpm);
   oledUpdate(SCAN_HOME_ANGLE, d05RawCm, d04RawCm, "FORWARD", status);
 }
 
 void debugDriveEnd(uint32_t elapsedMs, float d05RawCm, float d04RawCm, uint8_t lostCount, const char *status)
 {
-  printf("DRV_END t=%4lums d05_raw=%.1f d04_raw=%.1f lost=%u/%u status=%s\r\n",
-         elapsedMs, d05RawCm, d04RawCm, lostCount, PID_LOST_MAX, status);
+  printf("DRV_END t=%4lums d05_raw=%s d04_raw=%s lost=%u/%u status=%s\r\n",
+         elapsedMs, debugF1(d05RawCm), debugF1(d04RawCm), lostCount, PID_LOST_MAX, status);
   oledUpdate(SCAN_HOME_ANGLE, d05RawCm, d04RawCm, NULL, status);
 }
 
 void debugWallDetected(float d05RawCm, float d04RawCm)
 {
-  printf("WALL_DETECT d05_raw=%.1f d04_raw=%.1f status=OBSTACLE_FND\r\n", d05RawCm, d04RawCm);
+  printf("WALL_DETECT d05_raw=%s d04_raw=%s status=OBSTACLE_FND\r\n",
+         debugF1(d05RawCm), debugF1(d04RawCm));
   oledUpdate(SCAN_HOME_ANGLE, d05RawCm, d04RawCm, "FORWARD", "OBSTACLE_FND");
 }
 
@@ -119,9 +146,9 @@ void debugWallTurn(bool leftHasWall, float leftDistCm, bool rightHasWall, float 
 {
   const char *dir = (turnDeg < 0) ? "TURN-90L" : ((turnDeg == WALL_TURN_BACK_DEG) ? "TURN-180R" : "TURN-90R");
 
-  printf("WALL_TURN left=%s(%.1f) right=%s(%.1f) turn=%s(%d)\r\n",
-         leftHasWall ? "WALL" : "FREE", leftDistCm,
-         rightHasWall ? "WALL" : "FREE", rightDistCm,
+  printf("WALL_TURN left=%s(%s) right=%s(%s) turn=%s(%d)\r\n",
+         leftHasWall ? "WALL" : "FREE", debugF1(leftDistCm),
+         rightHasWall ? "WALL" : "FREE", debugF1(rightDistCm),
          dir, turnDeg);
   oledPrintLine(1, "%s", dir);
   oledPrintLine(2, "L:%s R:%s", leftHasWall ? "WALL" : "FREE", rightHasWall ? "WALL" : "FREE");
@@ -142,5 +169,59 @@ void debugMotorPwmTest(uint16_t duty, uint8_t percent, const char *status)
   oledPrintLine(0, "DUTY:%4u PWM:%2u%%", duty, percent);
   oledPrintLine(1, "%s", status);
   oledPrintLine(2, "PWM_TEST");
+  oledPrintCurrentPwm();
+}
+
+void debugOledScreen(const char *line0, const char *line1, const char *line2, const char *line3)
+{
+  if (line0) oledPrintLine(0, "%s", line0);
+  if (line1) oledPrintLine(1, "%s", line1);
+  if (line2) oledPrintLine(2, "%s", line2);
+  if (line3) oledPrintLine(3, "%s", line3);
+}
+
+void debugNavWaypoint(uint8_t idx, uint8_t total, float curX, float curY, float curThetaDeg,
+                      float targetX, float targetY, float targetThetaDeg, const char *phase)
+{
+  printf("NAV wp=%u/%u phase=%s cur=(%s,%s,%s) target=(%s,%s,%s)\r\n",
+         idx, total, phase,
+         debugF1(curX), debugF1(curY), debugF1(curThetaDeg),
+         debugF1(targetX), debugF1(targetY), debugF1(targetThetaDeg));
+  oledPrintLine(0, "WP%u/%u T:%d,%d,%dd", idx, total,
+                (int)lroundf(targetX), (int)lroundf(targetY), (int)lroundf(targetThetaDeg));
+  oledPrintLine(1, "%s", phase);
+  oledPrintLine(2, "CUR:%d,%d %dd",
+                (int)lroundf(curX), (int)lroundf(curY), (int)lroundf(curThetaDeg));
+  oledPrintCurrentPwm();
+}
+
+void debugNavPreview(uint8_t idx, uint8_t total, float curX, float curY, float curThetaDeg,
+                     float targetX, float targetY, float targetThetaDeg,
+                     const char *nextAction, uint8_t secLeft, bool imuReady)
+{
+  if (secLeft == (uint8_t)(NAV_STEP_PREVIEW_MS / 1000u))
+  {
+    printf("NAV_NEXT wp=%u/%u next=%s (%us) cur=(%s,%s,%s) target=(%s,%s,%s)\r\n",
+           idx, total, nextAction, secLeft,
+           debugF1(curX), debugF1(curY), debugF1(curThetaDeg),
+           debugF1(targetX), debugF1(targetY), debugF1(targetThetaDeg));
+  }
+  oledPrintLine(0, "WP%u/%u T:%d,%d,%dd", idx, total,
+                (int)lroundf(targetX), (int)lroundf(targetY), (int)lroundf(targetThetaDeg));
+  oledPrintLine(1, "NEXT:%s %us", nextAction, secLeft);
+  oledPrintLine(2, "CUR:%d,%d %dd",
+                (int)lroundf(curX), (int)lroundf(curY), (int)lroundf(curThetaDeg));
+  oledPrintLine(3, "MODE:%s", imuReady ? "IMU+ENC" : "ENCODER");
+}
+
+void debugStepPreview(uint8_t stepIdx, uint8_t stepTotal, const char *nextAction,
+                      uint8_t secLeft, bool imuReady)
+{
+  if (secLeft == (uint8_t)(NAV_STEP_PREVIEW_MS / 1000u))
+    printf("TEST_NEXT step=%u/%u action=%s (%us)\r\n", stepIdx, stepTotal, nextAction, secLeft);
+
+  oledPrintLine(0, "STEP %u/%u", stepIdx, stepTotal);
+  oledPrintLine(1, "NEXT:%s %us", nextAction, secLeft);
+  oledPrintLine(2, "MODE:%s", imuReady ? "IMU+ENC" : "ENCODER");
   oledPrintCurrentPwm();
 }
