@@ -22,4 +22,10 @@ void motorSpinContinuousLowestSpeed(void);
 // Chạy thẳng liên tục không ngừng ở tốc độ PWM thấp nhất có thể
 void motorDriveContinuousLowestSpeed(void);
 
+// Chạy một lần kịch bản Turn - Drive - Turn qua danh sách tọa độ (x, y, z°)
+void motorTestWaypointsRun(void);
+
+// Kịch bản test chuẩn: tiến 1m, lùi 1m, xoay trái/phải 45°, 90°, 180° (có đếm ngược 3s trên OLED)
+void motorTestMotionSuiteRun(void);
+
 #endif // MOTORTEST_H
