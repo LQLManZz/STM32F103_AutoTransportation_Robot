@@ -45,10 +45,6 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
-    Core/Src/gpio.c
-    Core/Src/i2c.c
-    Core/Src/tim.c
-    Core/Src/usart.c
     Core/Src/srf05.c
     Core/Src/servo.c
     Core/Src/delay.c
@@ -68,11 +64,6 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
-)
-
-# Cho phép printf("%f"): newlib-nano mặc định bỏ hỗ trợ float
-target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
-    -u _printf_float
 )
 
 # Add project symbols (macros)

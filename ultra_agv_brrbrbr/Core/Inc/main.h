@@ -49,6 +49,8 @@ extern "C" {
 
 /* USER CODE END EM */
 
+void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
+
 /* Exported functions prototypes ---------------------------------------------*/
 void Error_Handler(void);
 
@@ -75,6 +77,8 @@ void Error_Handler(void);
 #define DebugScreen_SCL_GPIO_Port GPIOB
 #define DebugScreen_SDA_Pin GPIO_PIN_11
 #define DebugScreen_SDA_GPIO_Port GPIOB
+#define Trig_SRF04_Pin GPIO_PIN_14
+#define Trig_SRF04_GPIO_Port GPIOB
 #define Trig_SRF05_Pin GPIO_PIN_15
 #define Trig_SRF05_GPIO_Port GPIOB
 #define Echo_SRF05_Pin GPIO_PIN_8
@@ -87,6 +91,10 @@ void Error_Handler(void);
 #define Encoder_L_Pin GPIO_PIN_7
 #define Encoder_L_GPIO_Port GPIOB
 #define Encoder_L_EXTI_IRQn EXTI9_5_IRQn
+#define IMU_SCL_Pin GPIO_PIN_8
+#define IMU_SCL_GPIO_Port GPIOB
+#define IMU_SDA_Pin GPIO_PIN_9
+#define IMU_SDA_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 

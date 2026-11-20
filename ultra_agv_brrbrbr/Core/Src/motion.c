@@ -166,8 +166,8 @@ static void stepWheelPid(MotorDir dirL, MotorDir dirR, uint16_t curTargetRpm, ui
     float dirSign = (dirL == MOTOR_FORWARD) ? 1.0f : -1.0f;
     float yawErr = -imuGetYawDeg();
     *yawIntegral += yawErr;
-    if (*yawIntegral > 50.0f) *yawIntegral = 50.0f;
-    if (*yawIntegral < -50.0f) *yawIntegral = -50.0f;
+    if (*yawIntegral > IMU_HEADING_INTEGRAL_MAX) *yawIntegral = IMU_HEADING_INTEGRAL_MAX;
+    if (*yawIntegral < -IMU_HEADING_INTEGRAL_MAX) *yawIntegral = -IMU_HEADING_INTEGRAL_MAX;
 
     syncAdj = dirSign * (IMU_HEADING_KP * yawErr +
                          IMU_HEADING_KI * (*yawIntegral) -
@@ -274,8 +274,8 @@ static void runPidLoop(MotorDir dirL, MotorDir dirR, uint16_t targetRpm, uint16_
     initRpm = decelRpm + (uint16_t)(((uint32_t)(targetRpm - decelRpm) * targetPulses) / decelPulses);
 
   // Xung mồi êm phá ma sát tĩnh rồi đặt duty nền tỉ lệ theo RPM mục tiêu
-  printf("PID_START dec=%s dirL=%d dirR=%d rpm=%u->%u targetP=%lu timeout=%lums\r\n",
-         decision, (int)dirL, (int)dirR, targetRpm, decelRpm, targetPulses, moveTimeoutMs);
+  debugLog("PID_START dec=%s dirL=%d dirR=%d rpm=%u->%u targetP=%lu timeout=%lums\r\n",
+           decision, (int)dirL, (int)dirR, targetRpm, decelRpm, targetPulses, moveTimeoutMs);
   startKickAndBase(dirL, dirR, DRIVE_KICK_DUTY, DRIVE_KICK_MS, initRpm, minDuty, decision);
 
   uint32_t startMs = HAL_GetTick();
@@ -336,8 +336,8 @@ static void runPidLoop(MotorDir dirL, MotorDir dirR, uint16_t targetRpm, uint16_
   const char *reason = (durationMs > 0u)
                            ? "TIME_OK"
                            : (((finalPL + finalPR) >= (2u * targetPulses)) ? "PULSES_OK" : "TIMEOUT");
-  printf("PID_END dec=%s reason=%s dt=%lums pL=%lu pR=%lu targetP=%lu yaw=%s\r\n",
-         decision, reason, endMs, finalPL, finalPR, targetPulses, debugF1(imuGetYawDeg()));
+  debugLog("PID_END dec=%s reason=%s dt=%lums pL=%lu pR=%lu targetP=%lu yaw=%s\r\n",
+           decision, reason, endMs, finalPL, finalPR, targetPulses, debugF1(imuGetYawDeg()));
 
   motionBrake();
   waitImuMs(DRIVE_BRAKE_DELAY_MS);
@@ -416,8 +416,8 @@ static void runSpinImuLoop(int16_t angleDeg, uint16_t targetRpm, uint16_t decelR
       stepWheelPid(dirL, dirR, curTargetRpm, PID_SPIN_MIN_DUTY, integral, prevErr, NULL);
     }
 
-    // Tránh trễ I2C OLED ở 10° cuối để vòng đọc IMU 5ms bắt điểm dừng chính xác nhất
-    if ((targetAbsDeg - turnedAbs) > 10.0f && (nowMs - lastDebugMs) >= ENC_SAMPLE_MS)
+    // Tránh trễ I2C OLED ở góc cuối để vòng đọc IMU 5ms bắt điểm dừng chính xác nhất
+    if ((targetAbsDeg - turnedAbs) > IMU_SPIN_QUIET_DEG && (nowMs - lastDebugMs) >= ENC_SAMPLE_MS)
     {
       lastDebugMs = nowMs;
       debugDecision(decision);
@@ -465,9 +465,9 @@ static void runSpinImuLoop(int16_t angleDeg, uint16_t targetRpm, uint16_t decelR
 
     // Pha vi chỉnh chạy rất chậm nên phanh ngắn mạch trực tiếp, tránh xung đảo chiều làm bật ngược lại
     motorBrakeAll();
-    waitImuMs(60u);
+    waitImuMs(IMU_TRIM_BRAKE_MS);
     motionStop();
-    waitImuMs(80u);
+    waitImuMs(IMU_TRIM_SETTLE_MS);
     if (fabsf(imuGetYawDeg() - yawBefore) < 0.5f)
     {
       trimDuty = (uint16_t)(trimDuty + IMU_SPIN_TRIM_STEP_DUTY);

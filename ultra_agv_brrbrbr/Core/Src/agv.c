@@ -12,10 +12,7 @@
 #include "srf05.h"
 #include <math.h>
 #include <stdbool.h>
-#include <stdio.h>
 #include <stdlib.h>
-
-#define AGV_PI 3.14159265f
 
 typedef enum
 {
@@ -64,7 +61,7 @@ static void drivePidAndTrackPose(int16_t driveCm)
   uint32_t avgPulses = (encoderGetPulses(MOTOR_LEFT) + encoderGetPulses(MOTOR_RIGHT)) / 2u;
   float actualDistCm = ((float)avgPulses * WHEEL_CIRCUMFERENCE_CM) / (float)ENC_PULSES_PER_REV;
   float sign = (driveCm > 0) ? 1.0f : -1.0f;
-  float rad = robotPose.thetaDeg * (AGV_PI / 180.0f);
+  float rad = robotPose.thetaDeg * (MATH_PI / 180.0f);
   robotPose.xCm += sign * actualDistCm * cosf(rad);
   robotPose.yCm += sign * actualDistCm * sinf(rad);
   if (imuIsReady())
@@ -74,12 +71,12 @@ static void drivePidAndTrackPose(int16_t driveCm)
 // Tính tọa độ tâm vật (x, y) từ góc servo và khoảng cách SRF05 theo tâm trục 2 bánh xe
 static NavPose computeObjectCenter(uint8_t servoAngleDeg, float sensorDistCm)
 {
-  float thetaRad = robotPose.thetaDeg * (AGV_PI / 180.0f);
+  float thetaRad = robotPose.thetaDeg * (MATH_PI / 180.0f);
   float pivotX = robotPose.xCm + SERVO_PIVOT_OFFSET_CM * cosf(thetaRad);
   float pivotY = robotPose.yCm + SERVO_PIVOT_OFFSET_CM * sinf(thetaRad);
 
   float rayAngleDeg = robotPose.thetaDeg + ((float)servoAngleDeg - (float)SCAN_HOME_ANGLE);
-  float rayRad = rayAngleDeg * (AGV_PI / 180.0f);
+  float rayRad = rayAngleDeg * (MATH_PI / 180.0f);
   float rayDistCm = SENSOR_FACE_OFFSET_CM + sensorDistCm + OBJ_CENTER_OFFSET_CM;
 
   NavPose obj;
@@ -116,7 +113,7 @@ static bool approachWallDist(float targetDistCm)
       brakeAndStop();
       uint32_t avgPulses = (encoderGetPulses(MOTOR_LEFT) + encoderGetPulses(MOTOR_RIGHT)) / 2u;
       float movedCm = ((float)avgPulses * WHEEL_CIRCUMFERENCE_CM) / (float)ENC_PULSES_PER_REV;
-      float rad = robotPose.thetaDeg * (AGV_PI / 180.0f);
+      float rad = robotPose.thetaDeg * (MATH_PI / 180.0f);
       robotPose.xCm += movedCm * cosf(rad);
       robotPose.yCm += movedCm * sinf(rad);
       if (imuIsReady())
@@ -146,13 +143,14 @@ static bool approachWallDist(float targetDistCm)
   return false;
 }
 
-static bool checkWallAtAngle(uint8_t angleDeg, float *outDistCm)
+// Đo kiểm tra tường phía trước mũi xe (giữ servo cố định tại HOME 90°)
+static bool checkWallAhead(float *outDistCm)
 {
   uint8_t wallHits = 0;
   float lastDistCm = ECHO_ERROR_TIMEOUT;
 
   debugDecision("SCANNING");
-  moveServoSmooth(angleDeg);
+  moveServoSmooth(SCAN_HOME_ANGLE);
   HAL_Delay(SCAN_SETTLE_MS);
 
   for (uint8_t i = 0; i < WALL_CHECK_SAMPLES; i++)
@@ -174,50 +172,60 @@ static bool checkWallAtAngle(uint8_t angleDeg, float *outDistCm)
       lastDistCm = d05RawCm;
     }
 
-    debugScan(d05RawCm, d04RawCm, angleDeg, wallHits, isWall ? TARGET_OBSTACLE : type);
+    debugScan(d05RawCm, d04RawCm, SCAN_HOME_ANGLE, wallHits, isWall ? TARGET_OBSTACLE : type);
     HAL_Delay(SCAN_PERIOD_MS);
   }
   if (outDistCm) *outDistCm = lastDistCm;
   return wallHits >= SCAN_CONFIRM_COUNT;
 }
 
+// Xử lý tường/ngõ cụt: xoay phải 90° quét -> kẹt thì quay 180° sang trái quét -> vẫn kẹt thì quay về 180° sau lưng
 static void handleWall(void)
 {
   if (!approachWallDist(WALL_STOP_DIST_CM))
     return;
 
-  float leftDistCm = ECHO_ERROR_TIMEOUT;
+  debugLog("WALL_CHECK side=RIGHT spin=%d\r\n", WALL_TURN_RIGHT_DEG);
+  spinAndTrackPose(WALL_TURN_RIGHT_DEG);
   float rightDistCm = ECHO_ERROR_TIMEOUT;
-  bool leftHasWall = checkWallAtAngle(WALL_CHECK_LEFT_ANGLE, &leftDistCm);
-  bool rightHasWall = checkWallAtAngle(WALL_CHECK_RIGHT_ANGLE, &rightDistCm);
+  bool rightHasWall = checkWallAhead(&rightDistCm);
+  if (!rightHasWall)
+  {
+    debugWallTurn(false, ECHO_ERROR_TIMEOUT, false, rightDistCm, WALL_TURN_RIGHT_DEG);
+    HAL_Delay(WALL_HOLD_MS);
+    return;
+  }
 
-  moveServoSmooth(SCAN_HOME_ANGLE);
-  HAL_Delay(SCAN_SETTLE_MS);
-
-  int16_t turnDeg = WALL_TURN_BACK_DEG;
+  debugLog("WALL_CHECK side=LEFT spin=%d\r\n", WALL_TURN_BACK_DEG);
+  spinAndTrackPose(WALL_TURN_BACK_DEG);
+  float leftDistCm = ECHO_ERROR_TIMEOUT;
+  bool leftHasWall = checkWallAhead(&leftDistCm);
   if (!leftHasWall)
-    turnDeg = WALL_TURN_LEFT_DEG;
-  else if (!rightHasWall)
-    turnDeg = WALL_TURN_RIGHT_DEG;
+  {
+    debugWallTurn(false, leftDistCm, true, rightDistCm, WALL_TURN_LEFT_DEG);
+    HAL_Delay(WALL_HOLD_MS);
+    return;
+  }
 
-  debugWallTurn(leftHasWall, leftDistCm, rightHasWall, rightDistCm, turnDeg);
+  debugWallTurn(true, leftDistCm, true, rightDistCm, WALL_TURN_BACK_DEG);
   HAL_Delay(WALL_HOLD_MS);
-  spinAndTrackPose(turnDeg);
+  debugLog("WALL_CHECK side=BACK spin=%d\r\n", WALL_TURN_LEFT_DEG);
+  spinAndTrackPose(WALL_TURN_LEFT_DEG);
 }
 
 // Cấp tọa độ tâm vật, xoay hướng và chạy tới tọa độ đích bằng PID + 2 encoder rồi dừng hẳn
 static bool goToDetectedObject(float distanceCm, uint8_t angleDeg)
 {
   objectCenter = computeObjectCenter(angleDeg, distanceCm);
-  printf("OBJ_COORD raw_ang=%u raw_d=%s -> obj=(%s,%s) cur=(%s,%s,%s)\r\n",
-         angleDeg, debugF1(distanceCm),
-         debugF1(objectCenter.xCm), debugF1(objectCenter.yCm),
-         debugF1(robotPose.xCm), debugF1(robotPose.yCm), debugF1(robotPose.thetaDeg));
+  debugLog("OBJ_COORD raw_ang=%u raw_d=%s -> obj=(%s,%s) cur=(%s,%s,%s)\r\n",
+           angleDeg, debugF1(distanceCm),
+           debugF1(objectCenter.xCm), debugF1(objectCenter.yCm),
+           debugF1(robotPose.xCm), debugF1(robotPose.yCm), debugF1(robotPose.thetaDeg));
 
   // Xoay tâm trục xe hướng thẳng về tọa độ tâm vật vừa tính
   float dx = objectCenter.xCm - robotPose.xCm;
   float dy = objectCenter.yCm - robotPose.yCm;
-  float headingToObj = atan2f(dy, dx) * (180.0f / AGV_PI);
+  float headingToObj = atan2f(dy, dx) * (180.0f / MATH_PI);
   float turnMathDeg = normalizeDeg(headingToObj - robotPose.thetaDeg);
 
   moveServoSmooth(SCAN_HOME_ANGLE);
@@ -227,17 +235,17 @@ static bool goToDetectedObject(float distanceCm, uint8_t angleDeg)
   if (fabsf(turnMathDeg) > (float)AGV_FINE_DEADBAND_DEG)
   {
     coarseCmd = (int16_t)lroundf(-turnMathDeg);
-    printf("SPIN_COARSE cmd=%d deg\r\n", coarseCmd);
+    debugLog("SPIN_COARSE cmd=%d deg\r\n", coarseCmd);
     spinAndTrackPose(coarseCmd);
-    printf("AFTER_COARSE pos=(%s,%s,%s)\r\n",
-           debugF1(robotPose.xCm), debugF1(robotPose.yCm), debugF1(robotPose.thetaDeg));
+    debugLog("AFTER_COARSE pos=(%s,%s,%s)\r\n",
+             debugF1(robotPose.xCm), debugF1(robotPose.yCm), debugF1(robotPose.thetaDeg));
   }
 
-  // Nếu sau xoay thô hướng xe vẫn lệch quá 15° so với vật thì không chạy bừa, quay lại quét
+  // Nếu sau xoay thô hướng xe vẫn lệch quá AGV_POST_SPIN_MAX_ERR_DEG so với vật thì không chạy bừa, quay lại quét
   float postSpinErr = fabsf(normalizeDeg(headingToObj - robotPose.thetaDeg));
-  if (postSpinErr > 15.0f)
+  if (postSpinErr > AGV_POST_SPIN_MAX_ERR_DEG)
   {
-    printf("ABORT_DRIVE spin_err=%s\r\n", debugF1(postSpinErr));
+    debugLog("ABORT_DRIVE spin_err=%s\r\n", debugF1(postSpinErr));
     return false;
   }
 
@@ -245,12 +253,12 @@ static bool goToDetectedObject(float distanceCm, uint8_t angleDeg)
   float fineDist = 0.0f;
   uint8_t fineAngle = SCAN_HOME_ANGLE;
   bool fineFound = (scanFine(&fineDist, &fineAngle) == SCAN_OBJECT_FOUND);
-  printf("SCAN_FINE found=%d fine_ang=%u fine_d=%s\r\n",
-         fineFound ? 1 : 0, fineAngle, debugF1(fineDist));
+  debugLog("SCAN_FINE found=%d fine_ang=%u fine_d=%s\r\n",
+           fineFound ? 1 : 0, fineAngle, debugF1(fineDist));
   if (!fineFound)
   {
     debugAlign(coarseCmd, fineAngle, fineSpinDeg, fineDist, fineFound);
-    printf("ABORT_DRIVE fine_not_found\r\n");
+    debugLog("ABORT_DRIVE fine_not_found\r\n");
     return false;
   }
 
@@ -258,7 +266,7 @@ static bool goToDetectedObject(float distanceCm, uint8_t angleDeg)
   if (abs(fineOffset) > AGV_FINE_DEADBAND_DEG)
   {
     fineSpinDeg = fineOffset;
-    printf("SPIN_FINE cmd=%d deg\r\n", fineSpinDeg);
+    debugLog("SPIN_FINE cmd=%d deg\r\n", fineSpinDeg);
     spinAndTrackPose(fineSpinDeg);
   }
   debugAlign(coarseCmd, fineAngle, fineSpinDeg, fineDist, fineFound);
@@ -269,17 +277,17 @@ static bool goToDetectedObject(float distanceCm, uint8_t angleDeg)
   uint32_t driveStartMs = HAL_GetTick();
   float lastD05 = fineDist;
   float lastD04 = ECHO_ERROR_TIMEOUT;
-  for (uint8_t step = 0u; step < 2u; step++)
+  for (uint8_t step = 0u; step < AGV_APPROACH_MAX_STEPS; step++)
   {
     dx = objectCenter.xCm - robotPose.xCm;
     dy = objectCenter.yCm - robotPose.yCm;
     float distToCenterCm = sqrtf(dx * dx + dy * dy);
     int16_t driveCm = (int16_t)lroundf(distToCenterCm - stopOffsetCm);
 
-    printf("OBJ_TARGET step=%u obj=(%s,%s) pos=(%s,%s,%s) dist_center=%s drive=%dcm\r\n",
-           step + 1u, debugF1(objectCenter.xCm), debugF1(objectCenter.yCm),
-           debugF1(robotPose.xCm), debugF1(robotPose.yCm), debugF1(robotPose.thetaDeg),
-           debugF1(distToCenterCm), driveCm);
+    debugLog("OBJ_TARGET step=%u obj=(%s,%s) pos=(%s,%s,%s) dist_center=%s drive=%dcm\r\n",
+             step + 1u, debugF1(objectCenter.xCm), debugF1(objectCenter.yCm),
+             debugF1(robotPose.xCm), debugF1(robotPose.yCm), debugF1(robotPose.thetaDeg),
+             debugF1(distToCenterCm), driveCm);
 
     if (driveCm <= 0)
     {
@@ -289,17 +297,17 @@ static bool goToDetectedObject(float distanceCm, uint8_t angleDeg)
 
     drivePidAndTrackPose(driveCm);
 
-    // Đo kiểm tra sau khi dừng: nếu đã sát <= 6 cm thì xong; nếu còn xa thì cập nhật tọa độ đi tiếp
+    // Đo kiểm tra sau khi dừng: lọc trung vị 3 mẫu tránh 1 phát nhiễu báo mất vật oan
     float d05 = ECHO_ERROR_TIMEOUT;
     float d04 = ECHO_ERROR_TIMEOUT;
-    measureDualDistanceCM(&d05, &d04);
+    measureDualDistanceMedianCM(&d05, &d04);
     lastD05 = d05;
     lastD04 = d04;
-    printf("AFTER_DRIVE pL=%lu pR=%lu pos=(%s,%s,%s) check_d05=%s check_d04=%s\r\n",
-           encoderGetPulses(MOTOR_LEFT), encoderGetPulses(MOTOR_RIGHT),
-           debugF1(robotPose.xCm), debugF1(robotPose.yCm), debugF1(robotPose.thetaDeg),
-           debugF1(d05), debugF1(d04));
-    if (d05 == ECHO_ERROR_TOO_CLOSE || (d05 >= 0.0f && d05 <= (PID_DIST_TARGET_CM + 2.5f)))
+    debugLog("AFTER_DRIVE pL=%lu pR=%lu pos=(%s,%s,%s) SRF05_bot=%s SRF04_top=%s\r\n",
+             encoderGetPulses(MOTOR_LEFT), encoderGetPulses(MOTOR_RIGHT),
+             debugF1(robotPose.xCm), debugF1(robotPose.yCm), debugF1(robotPose.thetaDeg),
+             debugF1(d05), debugF1(d04));
+    if (d05 == ECHO_ERROR_TOO_CLOSE || (d05 >= 0.0f && d05 <= (PID_DIST_TARGET_CM + AGV_ARRIVE_TOLERANCE_CM)))
     {
       debugDriveEnd(HAL_GetTick() - driveStartMs, d05, d04, 0u, "DRV_DONE");
       return true;
@@ -345,10 +353,12 @@ void agvRun(void)
     blackboxServiceBootCmd(BLACKBOX_BOOT_WAIT_MS);
 
     blackboxStartCapture();
-    printf("AGV_INIT imu=%d\r\n", imuIsReady() ? 1 : 0);
+    debugState("CALIB", "IMU_CHK");
+    debugLog("AGV_INIT imu=%d\r\n", imuIsReady() ? 1 : 0);
     if (imuIsReady() || imuInit())
       imuCalibrate();
-    printf("AGV_CALIB_DONE imu=%d\r\n", imuIsReady() ? 1 : 0);
+    debugLog("AGV_CALIB_DONE imu=%d\r\n", imuIsReady() ? 1 : 0);
+    debugState("STOP", imuIsReady() ? "IMU_OK" : "IMU_ERR");
     robotPose.xCm = 0.0f;
     robotPose.yCm = 0.0f;
     robotPose.thetaDeg = 0.0f;
@@ -364,9 +374,9 @@ void agvRun(void)
       blackboxFlush();
       if (goToDetectedObject(distanceCm, angleDeg))
       {
-        printf("ARRIVED obj=(%s,%s) final_pos=(%s,%s,%s)\r\n",
-               debugF1(objectCenter.xCm), debugF1(objectCenter.yCm),
-               debugF1(robotPose.xCm), debugF1(robotPose.yCm), debugF1(robotPose.thetaDeg));
+        debugLog("ARRIVED obj=(%s,%s) final_pos=(%s,%s,%s)\r\n",
+                 debugF1(objectCenter.xCm), debugF1(objectCenter.yCm),
+                 debugF1(robotPose.xCm), debugF1(robotPose.yCm), debugF1(robotPose.thetaDeg));
         blackboxFlush();
         blackboxStopCapture();
         agvState = AGV_STATE_ARRIVED;
@@ -390,6 +400,8 @@ void agvRun(void)
         blackboxFlush();
         flushedEmptyScan = true;
       }
+      debugLog("SCAN_EXPAND spin=%d deg\r\n", AGV_SCAN_EXPAND_SPIN_DEG);
+      spinAndTrackPose(AGV_SCAN_EXPAND_SPIN_DEG);
     }
     break;
   }

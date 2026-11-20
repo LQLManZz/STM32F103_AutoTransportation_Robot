@@ -19,9 +19,9 @@ typedef enum
 
 typedef enum
 {
-  SCAN_SIDE_BOTH = 0, // Quét cả 2 bên (0°..180°)
-  SCAN_SIDE_LEFT,     // Chỉ quét nửa trái (90°..180°), dùng khi tường ở bên phải
-  SCAN_SIDE_RIGHT     // Chỉ quét nửa phải (90°..0°), dùng khi tường ở bên trái
+  SCAN_SIDE_BOTH = 0, // Quét từ trái sang phải (135°..45°)
+  SCAN_SIDE_LEFT,     // Chỉ quét nửa trái từ ngoài vào chính diện (135°..90°), dùng khi tường ở bên phải
+  SCAN_SIDE_RIGHT     // Chỉ quét nửa phải từ chính diện sang phải (90°..45°), dùng khi tường ở bên trái
 } ScanSide;
 
 // Bật PWM servo và đưa servo về HOME
@@ -30,13 +30,13 @@ void scanInit(void);
 // Phân loại mục tiêu từ khoảng cách thực tế của SRF05 (dưới) và SRF04 (trên, lùi 7cm)
 ScanTargetType scanClassifyTarget(float d05RawCm, float d04RawCm);
 
-// Quét xuôi từ HOME, về HOME rồi quét ngược; thấy vật cần gắp thì trả tọa độ cực: cự ly (cm) và góc servo (độ)
+// Quét toàn cung từ trái sang phải (135°..45°), lọc mép tường và xác minh cụm vật gần nhất
 ScanStatus scanForObject(float *distanceCm, uint8_t *angleDeg);
 
-// Quét phía trước và một phía chỉ định (tránh quét vào mặt tường đang men theo)
+// Quét một phía chỉ định theo chiều từ trái sang phải (tránh quét vào mặt tường đang men theo)
 ScanStatus scanSideArc(ScanSide side, float *distanceCm, uint8_t *angleDeg);
 
-// Quét góc hẹp quanh HOME (70°..110°) để vi chỉnh hướng mũi xe vào vật cần gắp gần nhất
+// Quét góc hẹp từ trái sang phải quanh HOME (120°..60°) để vi chỉnh hướng mũi xe vào vật gần nhất
 ScanStatus scanFine(float *distanceCm, uint8_t *angleDeg);
 
 #endif // SCANNER_H

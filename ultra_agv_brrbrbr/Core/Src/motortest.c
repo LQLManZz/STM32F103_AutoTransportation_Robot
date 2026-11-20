@@ -5,7 +5,6 @@
 #include "motion.h"
 #include "motor.h"
 #include "nav.h"
-#include <math.h>
 #include <stdio.h>
 
 static void startStep(const char *name)
@@ -151,19 +150,19 @@ void motorDriveContinuousLowestSpeed(void)
                       MOTOR_FORWARD, PWM_TEST_DRIVE_RIGHT_DUTY, "DRIVE");
 }
 
-static void prepareImuBeforeTest(const char *testTitle)
+static void prepareImuBeforeTest(void)
 {
-  debugOledScreen(testTitle, "NEXT: PUT ON FLOOR", "WAIT 2s...", "IMU: CHECKING...");
+  debugState("WAIT", "IMU_CHK");
   HAL_Delay(2000u);
 
   if (imuIsReady() || imuInit())
   {
-    debugOledScreen("IMU: MPU6050 READY", "CALIBRATING GYRO", "KEEP ROBOT STILL!", "WAIT ~1s...");
+    debugState("CALIB", "IMU_OK");
     imuCalibrate();
   }
   else
   {
-    debugOledScreen("IMU: NOT FOUND!", "FALLBACK: ENCODER", "CHECK PB8/PB9", "STARTING IN 2s...");
+    debugState("WAIT", "IMU_ERR");
     HAL_Delay(2000u);
   }
 }
@@ -181,20 +180,19 @@ void motorTestWaypointsRun(void)
   if (done)
     return;
 
-  prepareImuBeforeTest("TEST: SQUARE 40x40");
+  prepareImuBeforeTest();
 
+  uint8_t wpCount = (uint8_t)(sizeof(waypoints) / sizeof(waypoints[0]));
   navResetPose();
-  navFollowWaypoints(waypoints, (uint8_t)(sizeof(waypoints) / sizeof(waypoints[0])));
+  navFollowWaypoints(waypoints, wpCount);
 
   NavPose endPose = navGetPose();
-  char finalLine[OLED_LINE_CHARS + 1];
-  snprintf(finalLine, sizeof(finalLine), "END:%d,%d %dd",
-           (int)lroundf(endPose.xCm), (int)lroundf(endPose.yCm), (int)lroundf(endPose.thetaDeg));
-  debugOledScreen("ALL 4 PTS DONE!", finalLine,
-                  imuIsReady() ? "MODE: IMU+ENC" : "MODE: ENCODER",
-                  "PRESS RST TO REDO");
-  printf("NAV_ALL_DONE end=(%.1f,%.1f,%.1f) imu=%d\r\n",
-         endPose.xCm, endPose.yCm, endPose.thetaDeg, imuIsReady() ? 1 : 0);
+  debugNavWaypoint(wpCount, wpCount, endPose.xCm, endPose.yCm, endPose.thetaDeg,
+                   waypoints[wpCount - 1u].xCm, waypoints[wpCount - 1u].yCm, waypoints[wpCount - 1u].thetaDeg,
+                   "DONE");
+  debugLog("NAV_ALL_DONE end=(%s,%s,%s) imu=%d\r\n",
+           debugF1(endPose.xCm), debugF1(endPose.yCm), debugF1(endPose.thetaDeg),
+           imuIsReady() ? 1 : 0);
   done = true;
 }
 
@@ -219,7 +217,7 @@ void motorTestMotionSuiteRun(void)
   if (done)
     return;
 
-  prepareImuBeforeTest("TEST: 1m & ANGLES");
+  prepareImuBeforeTest();
 
   uint8_t total = (uint8_t)(sizeof(steps) / sizeof(steps[0]));
   uint8_t previewSec = (uint8_t)((NAV_STEP_PREVIEW_MS + 999u) / 1000u);
@@ -232,10 +230,6 @@ void motorTestMotionSuiteRun(void)
       HAL_Delay(1000u);
     }
 
-    char stepHeader[OLED_LINE_CHARS + 1];
-    snprintf(stepHeader, sizeof(stepHeader), "STEP %u/%u", (uint8_t)(i + 1u), total);
-    debugOledScreen(stepHeader, NULL, NULL, NULL);
-
     if (steps[i].isDrive)
       motionDriveDistancePid(steps[i].value, PID_TARGET_DRIVE_RPM);
     else
@@ -244,9 +238,7 @@ void motorTestMotionSuiteRun(void)
     HAL_Delay(NAV_STEP_PAUSE_MS);
   }
 
-  debugOledScreen("TEST 8/8 DONE!", "ALL STEPS FINISHED",
-                  imuIsReady() ? "MODE: IMU+ENC" : "MODE: ENCODER",
-                  "PRESS RST TO REDO");
-  printf("TEST_SUITE_DONE imu=%d\r\n", imuIsReady() ? 1 : 0);
+  debugState("DONE", imuIsReady() ? "IMU_OK" : "ENC_ONLY");
+  debugLog("TEST_SUITE_DONE imu=%d\r\n", imuIsReady() ? 1 : 0);
   done = true;
 }

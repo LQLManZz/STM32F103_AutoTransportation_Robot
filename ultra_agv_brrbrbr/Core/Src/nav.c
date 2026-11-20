@@ -8,8 +8,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define NAV_PI 3.14159265f
-
 static NavPose curPose = {0.0f, 0.0f, 0.0f};
 
 static float normalizeAngleDeg(float deg)
@@ -85,7 +83,7 @@ static void driveAndUpdatePose(uint8_t wpIndex, uint8_t wpTotal, const NavPose *
   uint32_t avgPulses = (encoderGetPulses(MOTOR_LEFT) + encoderGetPulses(MOTOR_RIGHT)) / 2u;
   float actualDistCm = ((float)avgPulses * WHEEL_CIRCUMFERENCE_CM) / (float)ENC_PULSES_PER_REV;
   float midYawDeg = imuIsReady() ? (curPose.thetaDeg + 0.5f * imuGetYawDeg()) : curPose.thetaDeg;
-  float rad = midYawDeg * (NAV_PI / 180.0f);
+  float rad = midYawDeg * (MATH_PI / 180.0f);
   curPose.xCm += actualDistCm * cosf(rad);
   curPose.yCm += actualDistCm * sinf(rad);
   if (imuIsReady())
@@ -116,7 +114,7 @@ void navGoToPose(const NavPose *target, uint8_t wpIndex, uint8_t wpTotal)
 
   if (distCm >= NAV_DIST_TOLERANCE_CM)
   {
-    float headingDeg = atan2f(dy, dx) * (180.0f / NAV_PI);
+    float headingDeg = atan2f(dy, dx) * (180.0f / MATH_PI);
     float turn1Deg = normalizeAngleDeg(headingDeg - curPose.thetaDeg);
     spinAndUpdatePose(wpIndex, wpTotal, target, turn1Deg);
     driveAndUpdatePose(wpIndex, wpTotal, target, distCm);

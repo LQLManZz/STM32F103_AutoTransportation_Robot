@@ -11,13 +11,16 @@ void debugInit(void);
 // Định dạng số thực 1 chữ số thập phân (không phụ thuộc cờ -u _printf_float)
 const char *debugF1(float v);
 
-// Cập nhật dòng 2 quyết định hệ thống (FORWARD, BACKWARD, TURN-90R, SCANNING...) và dòng 4 PWM
+// Xuất một dòng log dạng TAG key=value ra UART1 (đồng thời ghi vào Blackbox)
+void debugLog(const char *format, ...);
+
+// Cập nhật dòng 1 quyết định hệ thống (FORWARD, BACKWARD, TURN-90R, SCANNING...) và dòng 3 RPM
 void debugDecision(const char *decision);
 
 // Báo thông số thực tế mỗi lần đo khi quét thô
 void debugScan(float d05RawCm, float d04RawCm, uint8_t angleDeg, uint8_t hitCount, ScanTargetType type);
 
-// Báo thông số thực tế mỗi bước quét tinh (70°..110°)
+// Báo thông số thực tế mỗi bước quét tinh (60°..120°)
 void debugScanFine(uint8_t angleDeg, float d05RawCm, float d04RawCm, ScanTargetType type,
                    float bestDistCm, uint8_t bestAngleDeg);
 
@@ -42,8 +45,8 @@ void debugMotorTest(const char *step);
 // Báo thông số khi test tìm ngưỡng PWM tối thiểu: duty (0-999), % PWM, trạng thái
 void debugMotorPwmTest(uint16_t duty, uint8_t percent, const char *status);
 
-// Hiển thị trực tiếp 4 dòng lên OLED (truyền NULL để giữ nguyên dòng cũ)
-void debugOledScreen(const char *line0, const char *line1, const char *line2, const char *line3);
+// Cập nhật OLED theo đúng bố cục 4 dòng chuẩn: dòng 0 góc hướng IMU, dòng 1 quyết định, dòng 2 trạng thái, dòng 3 RPM
+void debugState(const char *decision, const char *status);
 
 // Báo trạng thái điều hướng theo tọa độ Turn - Drive - Turn
 void debugNavWaypoint(uint8_t idx, uint8_t total, float curX, float curY, float curThetaDeg,

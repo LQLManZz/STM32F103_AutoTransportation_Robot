@@ -4,7 +4,7 @@
 #include "stm32f1xx_hal.h"
 #include <stdbool.h>
 
-// Khởi tạo MPU6050 trên I2C2 (trả về true nếu tìm thấy cảm biến)
+// Khởi tạo MPU6050 trên I2C1 (trả về true nếu tìm thấy cảm biến)
 bool imuInit(void);
 
 // Kiểm tra MPU6050 đã sẵn sàng sử dụng hay chưa

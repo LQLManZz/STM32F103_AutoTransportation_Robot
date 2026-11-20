@@ -3,47 +3,89 @@
 
 #include "main.h"
 
+#define MATH_PI 3.14159265f // Hằng số Pi dùng tính chu vi bánh và quy đổi góc rad
+
 // --- Cụm 2 cảm biến siêu âm (SRF05 dưới + SRF04 trên) & Servo SG90 ---
-#define TRIGGER_PIN Trig_SRF05_Pin           // PB15 (Output) - phát xung Trigger chung cho cả 2 cảm biến
-#define TRIGGER_PORT Trig_SRF05_GPIO_Port    // GPIOB
-#define ECHO_PIN Echo_SRF05_Pin              // PA8 (Input) - nhận xung Echo SRF05 (cảm biến dưới)
-#define ECHO_PORT Echo_SRF05_GPIO_Port       // GPIOA
+#define TRIGGER_SRF05_PIN Trig_SRF05_Pin     // PB15 (Output) - phát xung Trigger SRF05 (cảm biến dưới)
+#define TRIGGER_SRF05_PORT Trig_SRF05_GPIO_Port
+#define ECHO_SRF05_PIN Echo_SRF05_Pin        // PA8 (Input) - nhận xung Echo SRF05 (cảm biến dưới)
+#define ECHO_SRF05_PORT Echo_SRF05_GPIO_Port
+#define TRIGGER_SRF04_PIN Trig_SRF04_Pin     // PB14 (Output) - phát xung Trigger SRF04 (cảm biến trên)
+#define TRIGGER_SRF04_PORT Trig_SRF04_GPIO_Port
 #define ECHO_SRF04_PIN Echo_SRF04_Pin        // PA12 (Input) - nhận xung Echo SRF04 (cảm biến trên)
-#define ECHO_SRF04_PORT Echo_SRF04_GPIO_Port // GPIOA
+#define ECHO_SRF04_PORT Echo_SRF04_GPIO_Port
 
-#define SENSOR_DEPTH_OFFSET_CM 7.0f      // Chênh lệch khoảng cách: SRF04 nằm lùi về phía sau 7 cm so với SRF05
-#define SCAN_OBSTACLE_TOLERANCE_CM 12.0f // Dung sai độ lệch (sau khi bù 7 cm) để kết luận vật cản
-#define SCAN_CLUSTER_DEPTH_JUMP_CM 12.0f // Ngưỡng nhảy khoảng cách d05 để tách riêng 2 vật gần/xa (cm)
+#define SENSOR_DEPTH_OFFSET_CM 7.0f           // Chênh lệch khoảng cách: SRF04 nằm lùi về phía sau 7 cm so với SRF05
+#define SCAN_OBSTACLE_TOLERANCE_CM 10.0f      // Dung sai độ lệch (sau khi bù 7 cm) để kết luận vật cản
+#define SCAN_CLUSTER_DEPTH_JUMP_CM 10.0f      // Ngưỡng nhảy khoảng cách d05 cục bộ để tách riêng 2 vật gần/xa (cm)
+#define SCAN_CLUSTER_MAX_DEPTH_SPAN_CM 12.0f  // Biên độ độ sâu tối đa trong cùng 1 cụm để chống trôi cụm (cm)
+#define SCAN_CORE_DEPTH_MARGIN_CM 3.0f        // Biên độ tính từ điểm gần nhất để xác định vùng lõi cụm (cm)
+#define SCAN_OBS_GUARD_STEPS 2u               // Số bước góc quanh điểm OBSTACLE để loại bỏ mép tường giả
+#define SCAN_OBS_GUARD_DEPTH_CM 6.0f          // Ngưỡng chênh lệch độ sâu xóa mép tường giả quanh OBSTACLE (cm)
 
-#define SERVO_MIN_PULSE_US 600u   // Độ rộng xung ứng với 0° (us), tick timer = 1 us
-#define SERVO_MAX_PULSE_US 2400u  // Độ rộng xung ứng với 180° (us)
-#define SERVO_MAX_ANGLE_DEG 180u  // Góc quay tối đa của servo (độ)
-#define SERVO_SMOOTH_STEP_DEG 1u  // Góc mỗi bước khi quay dần (độ)
-#define SERVO_SMOOTH_DELAY_MS 15u // Chờ giữa 2 bước (ms)
+#define SERVO_MIN_PULSE_US 600u      // Độ rộng xung ứng với 0° (us), tick timer = 1 us
+#define SERVO_MAX_PULSE_US 2400u     // Độ rộng xung ứng với 180° (us)
+#define SERVO_MAX_ANGLE_DEG 180u     // Góc quay tối đa của servo (độ)
+#define SERVO_SAFE_MIN_DEG 45u       // Góc quay tối thiểu an toàn tránh cấn dây (độ)
+#define SERVO_SAFE_MAX_DEG 135u      // Góc quay tối đa an toàn tránh cấn dây (độ)
+#define SERVO_CENTER_TRIM_DEG 0      // Bù lệch cơ khí lắp horn SG90 (độ)
+#define SERVO_SMOOTH_STEP_DEG 1u     // Góc mỗi bước khi quay dần (độ)
+#define SERVO_SMOOTH_DELAY_MS 20u    // Chờ giữa 2 bước khớp chu kỳ PWM 50 Hz của SG90 (ms)
+#define SERVO_DIRECT_STEP_MAX_DEG 4u // Bước quét nhỏ <= ngưỡng này nhảy thẳng rồi chờ ổn định (độ)
+#define SERVO_INIT_SETTLE_MS 500u    // Chờ servo quay về góc HOME 90° khi khởi động/reset (ms)
 
 #define SCAN_MIN_RANGE_CM 3.0f   // Khoảng cách tối thiểu (cm), gần hơn coi như không có vật
-#define SCAN_MAX_RANGE_CM 80.0f  // Bán kính quét tối đa cho sân 2m x 2m (cm)
-#define SCAN_STEP_DEG 4u         // Bước quét mịn 4° để bắt trọn từ mép đầu tới mép cuối vật
-#define SCAN_HOME_ANGLE 90u      // Vị trí ban đầu của servo (thẳng mũi xe)
-#define SCAN_SETTLE_MS 180u      // Chờ servo ổn định sau khi quay mượt (ms)
-#define SCAN_PERIOD_MS 60u       // Chu kỳ giữa 2 lần đo và in (ms), SRF05/SRF04 cần >= 50
-#define SCAN_FOUND_HOLD_MS 500u  // Dừng xác nhận sau khi tìm thấy trung tâm vật (ms)
-#define SCAN_CONFIRM_COUNT 2u    // Số bước liên tiếp thấy vật để xác nhận không phải nhiễu
+#define SCAN_MAX_RANGE_CM 80.0f  // Bán kính quét tối đa lấy tâm SRF05 dưới (cm), hạn chế khuếch tán sóng âm
+#define SRF05_MAX_RANGE_CM SCAN_MAX_RANGE_CM // Giới hạn đo SRF05 dưới (cm)
+#define SRF04_MAX_RANGE_CM (SCAN_MAX_RANGE_CM + SENSOR_DEPTH_OFFSET_CM + SCAN_OBSTACLE_TOLERANCE_CM) // Giới hạn đo SRF04 trên (bù lùi 7 cm + dung sai phân loại tường)
+#define SCAN_MIN_DEG SERVO_SAFE_MIN_DEG // Góc bắt đầu cung quét (45°, bên phải 45°)
+#define SCAN_MAX_DEG SERVO_SAFE_MAX_DEG // Góc kết thúc cung quét (135°, bên trái 45°)
+#define SCAN_STEP_DEG 3u                // Bước quét mịn 3° (đối xứng qua 90° trong cung 45°..135°)
+#define SCAN_MAX_POINTS 32u             // Số điểm góc tối đa lưu trong profile quét 1 cung
+#define SCAN_MAX_CLUSTERS 8u            // Số cụm ứng viên tối đa trên 1 cung quét
+#define SCAN_HOME_ANGLE 90u             // Vị trí ban đầu của servo (thẳng mũi xe)
+#define SCAN_SETTLE_MS 200u             // Chờ servo ổn định sau khi quay góc dài (ms)
+#define SCAN_STEP_SETTLE_MS 60u         // Chờ servo/cần hạ tắt rung sau mỗi bước quét nhỏ (ms)
+#define SCAN_BACKLASH_PRELOAD_DEG 9u    // Góc lùi lấy đà trước khi quay đúng chiều vào tâm cụm để bù độ rơ SG90 (độ)
+#define SCAN_PERIOD_MS 60u              // Chu kỳ giữa 2 lần đo tại 1 góc cố định (ms), SRF05/SRF04 cần >= 50
+#define SCAN_FOUND_HOLD_MS 500u         // Dừng xác nhận sau khi tìm thấy trung tâm vật (ms)
+#define SCAN_CONFIRM_COUNT 2u           // Số bước liên tiếp thấy vật để xác nhận không phải nhiễu
+#define SCAN_MEDIAN_SAMPLES 3u          // Số mẫu dùng trong bộ lọc trung vị đồng thuận 2/3
+#define SCAN_SAMPLE_SPREAD_CM 6.0f        // Ngưỡng chênh lệch tối đa để 2 mẫu được coi là đồng thuận (cm)
+#define SCAN_SAMPLE_TRIPLE_SPREAD_CM 9.0f // Ngưỡng biên độ tối đa trên cả 3 mẫu để lấy trung bình 3 mẫu (cm)
+#define SCAN_VERIFY_SAMPLES 5u          // Số mẫu đo xác minh bắt buộc tại góc tâm cụm ứng viên
+#define SCAN_VERIFY_MIN_HITS 3u         // Số mẫu TARGET_OBJECT hợp lệ tối thiểu để chốt cụm
+#define SCAN_VERIFY_MAX_OBS_HITS 1u     // Số mẫu TARGET_OBSTACLE tối đa cho phép khi xác minh vật
+#define SCAN_VERIFY_DEPTH_TOL_CM 8.0f   // Sai lệch khoảng cách tối đa khi xác minh tại tâm cụm (cm)
+#define SCAN_CLUSTER_MAX_SPAN_DEG 45u   // Bề rộng góc tối đa của vật ở cự ly > ngưỡng gần để loại tường nghiêng (độ)
+#define SCAN_CLUSTER_MAX_SPAN_NEAR_CM 25.0f // Khoảng cách gần cho phép góc quét vật rộng hơn (cm)
+#define SCAN_WALL_MIN_DEG 80u           // Góc bắt đầu vùng thẳng trước mũi xe để xác nhận tường (độ)
+#define SCAN_WALL_MAX_DEG 100u          // Góc kết thúc vùng thẳng trước mũi xe để xác nhận tường (độ)
+#define SCAN_WALL_DEPTH_SPREAD_CM 12.0f // Ngưỡng nhất quán độ sâu các điểm tường thẳng trước mũi (cm)
 
 #define SCAN_FINE_MIN_DEG 60u   // Góc bắt đầu quét hẹp vi chỉnh quanh HOME
 #define SCAN_FINE_MAX_DEG 120u  // Góc kết thúc quét hẹp vi chỉnh
-#define SCAN_FINE_STEP_DEG 4u   // Bước góc quét hẹp (độ)
-#define SCAN_FINE_SETTLE_MS 70u // Thời gian chờ servo ở mỗi bước quét (ms)
+#define SCAN_FINE_STEP_DEG 3u   // Bước góc quét hẹp (độ)
 #define AGV_FINE_DEADBAND_DEG 2 // Sai lệch góc <= giá trị này coi như đã thẳng
 
-#define TRIGGER_RESET_US 4u         // Thời gian giữ Trigger mức LOW trước khi phát xung (us)
-#define TRIGGER_PULSE_US 10u        // Độ rộng xung Trigger yêu cầu >= 10 us
+#define TRIGGER_RESET_US 10u        // Thời gian giữ Trigger mức LOW trước khi phát xung (us)
+#define TRIGGER_PULSE_US 15u        // Độ rộng xung Trigger >= 10 us (15 us để lái chắc cảm biến)
 #define ECHO_MIN_NOISE_US 50UL      // Bỏ qua xung nhiễu ngắn hơn 50 us
+#define ECHO_FALL_GLITCH_US 5UL     // Xác nhận chân Echo giữ LOW liên tục >= 5 us để chống nhiễu sụt cạnh xuống
 #define ECHO_MIN_VALID_US 116UL     // 116 us ~ 2 cm: dưới ngưỡng đo tin cậy
-#define ECHO_ERROR_TIMEOUT -1.0f    // Mã lỗi không nhận được xung phản hồi (timeout)
-#define ECHO_ERROR_TOO_CLOSE -2.0f  // Mã lỗi vật quá gần (< 2 cm)
-#define SOUND_SPEED_CM_US 0.0343f   // Tốc độ âm thanh (cm/us)
-#define MAX_ECHO_TIMEOUT_US 12000UL // Chờ echo tối đa 12 ms (~206 cm), quét nhanh & đủ cho tầm 80 cm
+#define ECHO_RANGE_MARGIN_US 150UL  // Dự phòng biên thời gian để không cắt oan vật ở sát maxRangeCm (us)
+#define ECHO_ERROR_TIMEOUT -1.0f                         // Mã lỗi phần cứng: Echo treo mức cao hoặc không lên xung
+#define ECHO_ERROR_TOO_CLOSE -2.0f                       // Mã lỗi vật quá gần (< 2 cm)
+#define ECHO_OUT_OF_RANGE_CM (SRF04_MAX_RANGE_CM + 1.0f) // Giá trị ngoài bán kính quét (không báo lỗi -1)
+#define SOUND_SPEED_CM_US 0.0343f                        // Tốc độ âm thanh (cm/us)
+#define ECHO_RISE_TIMEOUT_US 10000UL                     // Chờ cạnh lên Echo tối đa 10 ms sau Trigger
+#define ECHO_IDLE_WAIT_MS 180u                           // Chờ tối đa 180 ms cho Echo phiên trước tự hạ LOW
+#define ECHO_POST_IDLE_MS 5u                             // Nghỉ ngắn sau khi Echo vừa hạ LOW trước khi Trigger mới (ms)
+#define ECHO_RECOVERY_WAIT_MS 50u                        // Chờ Echo hạ LOW sau xung Trigger giải kẹt (ms)
+#define SENSOR_INTER_PING_MS 50u                         // Chờ tắt sóng âm dội giữa 2 lượt đo bất kỳ (ms)
+#define SENSOR_SAME_COOLDOWN_MS 65u                      // Giãn cách tối thiểu giữa 2 lần phát trên cùng 1 cảm biến (ms)
+#define SENSOR_RETRY_DELAY_MS 30u                        // Nghỉ trước khi đo lại khi gặp lỗi STUCK_HI/NO_RISE (ms)
+#define SENSOR_MAX_RETRIES 1u                            // Số lần thử lại tối đa khi gặp lỗi phần cứng Echo
 
 // --- Màn hình OLED SSD1306 128x64 (I2C2: SCL = PB10, SDA = PB11) ---
 #define OLED_I2C_ADDR (0x3Cu << 1) // Địa chỉ 7 bit 0x3C, HAL cần dạng dịch trái 1 bit
@@ -90,11 +132,13 @@
 #define PID_SAMPLE_TIME_MS 60u     // Chu kỳ đo SRF05/SRF04 (ms, cần >= 50)
 #define PID_TIMEOUT_MS 8000u       // Timeout tiếp cận tối đa (ms)
 #define PID_LOST_MAX 3u            // Số lần mất tường liên tiếp thì bỏ cuộc
+#define AGV_POST_SPIN_MAX_ERR_DEG 15.0f // Sai lệch hướng tối đa sau xoay thô trước khi hủy chạy (độ)
+#define AGV_APPROACH_MAX_STEPS 2u       // Số bước chạy PID tối đa khi tiếp cận tâm vật
+#define AGV_ARRIVE_TOLERANCE_CM 2.5f    // Khoảng cách cộng thêm vào đích khi đo kiểm tra sau khi dừng (cm)
+#define AGV_SCAN_EXPAND_SPIN_DEG -75    // Góc xoay xe tại chỗ để đổi vùng quét khi trống (CCW 75°, chồng lấn 15°)
 
 // --- Xử lý khi phát hiện tường (vật cản cao >= 11 cm) ---
 #define WALL_STOP_DIST_CM 10.0f    // Cự ly dừng sát tường (cm)
-#define WALL_CHECK_LEFT_ANGLE 180u // Góc servo quay sang trái kiểm tra tường (độ)
-#define WALL_CHECK_RIGHT_ANGLE 0u  // Góc servo quay sang phải kiểm tra tường (độ)
 #define WALL_CHECK_SAMPLES 3u      // Số lần đo kiểm tra tường mỗi bên trái/phải
 #define WALL_TURN_LEFT_DEG -90     // Góc quay trái tránh tường (độ)
 #define WALL_TURN_RIGHT_DEG 90     // Góc quay phải tránh tường (độ)
@@ -128,7 +172,7 @@
 #define ENC_STOP_TIMEOUT_MS 250u     // Quá thời gian này không có xung thì coi như bánh dừng (ms)
 #define ENC_SAMPLE_MS 100u           // Chu kỳ cập nhật tốc độ lên OLED và UART khi xe chạy (ms)
 #define WHEEL_DIAMETER_CM 7.0f       // Đường kính ngoài bánh xe đo thực tế (cm)
-#define WHEEL_CIRCUMFERENCE_CM (3.14159265f * WHEEL_DIAMETER_CM) // Chu vi bánh xe (~0.55 cm / sườn xung)
+#define WHEEL_CIRCUMFERENCE_CM (MATH_PI * WHEEL_DIAMETER_CM) // Chu vi bánh xe (~0.55 cm / sườn xung)
 #define ENC_SPIN_360_PULSES 83u      // Số sườn xung mỗi bánh để xoay 360° (track 14.5 cm / 7.0 cm * 40)
 
 #define PID_TARGET_DRIVE_RPM 65u     // Tốc độ chạy thẳng chậm, ổn định, hạn chế trượt bánh (vòng/phút)
@@ -147,7 +191,7 @@
 #define PID_BASE_LEFT_DUTY 420       // Duty nền bánh trái (~40% tốc độ ở PID_TARGET_DRIVE_RPM)
 #define PID_BASE_RIGHT_DUTY 485      // Duty nền bánh phải (bù tỉ lệ 169/147 do bánh phải nặng hơn)
 #define PID_KP 2.0f                  // Hệ số P giữ tốc độ RPM
-#define PID_KI 0.4f                  // Hệ số I bù tải giữ tốc độ RPM (tỉ lệ theo chu kỳ 30 ms)
+#define PID_KI 0.4f                  // Hệ số I bù tải giữ tốc độ RPM (tỉ lệ theo chu kỳ 20 ms)
 #define PID_KD 0.2f                  // Hệ số D giảm vọt lố tốc độ
 #define PID_SYNC_KP 10.0f            // Hệ số P đồng bộ số sườn xung 2 bánh (đã chia 2 vì 40 sườn/vòng)
 #define PID_SYNC_KD 1.5f             // Hệ số D đồng bộ vận tốc 2 bánh (duty / rpm lệch)
@@ -161,6 +205,10 @@
 #define NAV_STEP_PREVIEW_MS 3000u    // Thời gian hiển thị trước hoạt động tiếp theo lên OLED (ms)
 
 // --- IMU MPU6050 (I2C1 remap: SCL = PB8, SDA = PB9) ---
+#define IMU_SCL_PIN IMU_SCL_Pin        // PB8 - chân SCL I2C1 remap dùng cho IMU
+#define IMU_SCL_PORT IMU_SCL_GPIO_Port // GPIOB
+#define IMU_SDA_PIN IMU_SDA_Pin        // PB9 - chân SDA I2C1 remap dùng cho IMU
+#define IMU_SDA_PORT IMU_SDA_GPIO_Port // GPIOB
 #define IMU_I2C_HANDLE hi2c1         // Handle I2C1 dùng cho IMU trên PB8/PB9
 #define IMU_I2C_ADDR (0x68u << 1)    // Địa chỉ 7 bit 0x68 (AD0 nối GND hoặc thả nổi; 0x69 nếu AD0 nối 3.3V)
 #define IMU_I2C_TIMEOUT_MS 10u       // Timeout I2C đọc/ghi thanh ghi MPU6050 (ms)
@@ -187,6 +235,10 @@
 #define IMU_HEADING_KI 0.35f         // Hệ số I bù lệch cơ khí 2 bánh khi chạy thẳng bằng IMU
 #define IMU_HEADING_KD 0.4f          // Hệ số D giảm dao động lắc ngang khi giữ thẳng (duty / (°/s))
 #define IMU_HEADING_MAX_ADJ 140.0f   // Giới hạn bù lái tối đa giữa 2 bánh khi giữ thẳng bằng IMU
+#define IMU_HEADING_INTEGRAL_MAX 50.0f // Giới hạn chống bão hòa tích phân giữ thẳng bằng IMU
+#define IMU_SPIN_QUIET_DEG 10.0f     // Ngưng vẽ OLED trong góc cuối này để giữ chu kỳ đọc IMU 5 ms (°)
+#define IMU_TRIM_BRAKE_MS 60u        // Thời gian giữ phanh ngắn mạch sau mỗi lượt vi chỉnh góc (ms)
+#define IMU_TRIM_SETTLE_MS 80u       // Chờ xe ổn định sau mỗi lượt vi chỉnh góc (ms)
 
 // --- Bộ ghi log nội bộ (Blackbox) lưu vào 8 KB cuối Flash STM32F103C8T6 ---
 #define BLACKBOX_FLASH_ADDR 0x0800E000UL                                  // 8 page cuối (8 KB) của 64 KB Flash
