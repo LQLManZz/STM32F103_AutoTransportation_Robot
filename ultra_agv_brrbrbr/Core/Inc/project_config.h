@@ -307,4 +307,10 @@
 #define GRABBER_VERIFY_DIST_TOL_CM 8.0f    // Sai lệch cự ly tối đa so với vị trí ban đầu để xác nhận vật còn/đã đặt lại (cm)
 #define GRABBER_VERIFY_HOLD_MS 1500u       // Thời gian giữ hiển thị kết quả xác minh gắp/nhả trên OLED (ms)
 
+// --- Quay về điểm xuất phát (destination) ---
+#define DEST_MAX_ACTIONS 48u               // Số bước hành động tối đa lưu trong ngăn xếp lịch sử quay về
+#define DEST_MIN_SPIN_DEG 2                // Bỏ qua góc xoay quá nhỏ khi gộp/quay về (độ)
+#define DEST_MIN_DRIVE_CM 1                // Bỏ qua quãng đường quá nhỏ khi gộp/quay về (cm)
+#define DEST_HEADING_TRIM_DEG 4            // Ngưỡng lệch hướng IMU cho phép trước khi tự căn chỉnh lại lúc lùi về (độ)
+
 #endif // PROJECT_CONFIG_H

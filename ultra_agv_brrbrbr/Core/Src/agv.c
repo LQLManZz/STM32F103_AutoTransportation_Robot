@@ -3,6 +3,7 @@
 #include "project_config.h"
 #include "debug.h"
 #include "delay.h"
+#include "destination.h"
 #include "encoder.h"
 #include "grabber.h"
 #include "imu.h"
@@ -78,6 +79,7 @@ static void spinAndTrackPose(int16_t spinCmdDeg)
   if (spinCmdDeg == 0)
     return;
 
+  float prevTheta = robotPose.thetaDeg;
   servoStop();
   motionSpinAnglePid(spinCmdDeg, PID_TARGET_SPIN_RPM);
   if (imuIsReady())
@@ -90,6 +92,8 @@ static void spinAndTrackPose(int16_t spinCmdDeg)
     float actualDeg = ((float)avgPulses * 360.0f) / (float)ENC_SPIN_360_PULSES;
     robotPose.thetaDeg = normalizeDeg(robotPose.thetaDeg + ((spinCmdDeg < 0) ? actualDeg : -actualDeg));
   }
+  float deltaMathDeg = normalizeDeg(robotPose.thetaDeg - prevTheta);
+  destinationRecordSpin((int16_t)lroundf(-deltaMathDeg), prevTheta);
 }
 
 static void drivePidAndTrackPose(int16_t driveCm)
@@ -97,6 +101,7 @@ static void drivePidAndTrackPose(int16_t driveCm)
   if (driveCm == 0)
     return;
 
+  float prevTheta = robotPose.thetaDeg;
   servoStop();
   motionDriveDistancePid(driveCm, PID_TARGET_DRIVE_RPM);
 
@@ -108,6 +113,7 @@ static void drivePidAndTrackPose(int16_t driveCm)
   robotPose.yCm += sign * actualDistCm * sinf(rad);
   if (imuIsReady())
     robotPose.thetaDeg = imuGetHeadingDeg();
+  destinationRecordDrive((int16_t)lroundf(sign * actualDistCm), prevTheta);
 }
 
 // Tính tọa độ tâm vật (x, y) từ góc servo và khoảng cách SRF05 theo tâm trục 2 bánh xe
@@ -497,6 +503,7 @@ void agvInit(void)
   robotPose.yCm = 0.0f;
   robotPose.thetaDeg = 0.0f;
   objectCenter = robotPose;
+  destinationReset();
 }
 
 void agvRun(void)
@@ -518,6 +525,7 @@ void agvRun(void)
     robotPose.xCm = 0.0f;
     robotPose.yCm = 0.0f;
     robotPose.thetaDeg = 0.0f;
+    destinationReset();
     hadCompleteLog = blackboxHasCompleteLog();
     blackboxStartCapture();
     agvState = AGV_STATE_SCAN;
@@ -566,10 +574,24 @@ void agvRun(void)
 
         if (pickOk)
         {
-          debugLog("ARRIVED obj=(%s,%s) final_pos=(%s,%s,%s)\r\n",
+          debugLog("PICK_OK_RETURN obj=(%s,%s) pick_pos=(%s,%s,%s) steps=%u\r\n",
+                   debugF1(objectCenter.xCm), debugF1(objectCenter.yCm),
+                   debugF1(robotPose.xCm), debugF1(robotPose.yCm), debugF1(robotPose.thetaDeg),
+                   destinationGetCount());
+
+          destinationReturnHome(&robotPose);
+
+          // Cô lập hệ thống và hạ cần nhả vật tại đúng điểm xuất phát
+          motorStopAll();
+          servoStop();
+          setEncoderIrq(false);
+          grabberRelease();
+          setEncoderIrq(true);
+
+          debugLog("DELIVERED obj=(%s,%s) final_pos=(%s,%s,%s)\r\n",
                    debugF1(objectCenter.xCm), debugF1(objectCenter.yCm),
                    debugF1(robotPose.xCm), debugF1(robotPose.yCm), debugF1(robotPose.thetaDeg));
-          debugState("STOP", "ARRIVED");
+          debugState("STOP", "DELIVERED");
           blackboxFlushComplete();
           blackboxStopCapture();
           agvState = AGV_STATE_ARRIVED;

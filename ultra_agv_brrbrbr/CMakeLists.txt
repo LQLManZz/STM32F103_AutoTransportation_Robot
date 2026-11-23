@@ -57,6 +57,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/encoder.c
     Core/Src/imu.c
     Core/Src/nav.c
+    Core/Src/destination.c
     Core/Src/oled.c
     Core/Src/debug.c
     Core/Src/blackbox.c
