@@ -1,7 +1,6 @@
 #include "srf05.h"
 #include "project_config.h"
 #include "delay.h"
-#include <math.h>
 #include <stddef.h>
 
 typedef enum
@@ -192,7 +191,7 @@ static float measureSingleOnce(GPIO_TypeDef *trigPort, uint16_t trigPin,
 
   triggerPulse(trigPort, trigPin, sensorIdx);
 
-  uint32_t maxEchoUs = (uint32_t)ceilf((maxRangeCm * 2.0f) / SOUND_SPEED_CM_US) + ECHO_RANGE_MARGIN_US;
+  uint32_t maxEchoUs = (uint32_t)((maxRangeCm * 2.0f) / SOUND_SPEED_CM_US + 1.0f) + ECHO_RANGE_MARGIN_US;
   EchoStatus status = ECHO_NO_RISE;
   uint32_t durationUs = pulseInHigh(echoPort, echoPin, ECHO_RISE_TIMEOUT_US, maxEchoUs, &status);
   if (outStatus) *outStatus = status;

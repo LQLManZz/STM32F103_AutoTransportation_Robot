@@ -1,6 +1,7 @@
 #ifndef SCANNER_H
 #define SCANNER_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 typedef enum
@@ -38,5 +39,11 @@ ScanStatus scanSideArc(ScanSide side, float *distanceCm, uint8_t *angleDeg);
 
 // Quét góc hẹp từ trái sang phải quanh HOME (120°..60°) để vi chỉnh hướng mũi xe vào vật gần nhất
 ScanStatus scanFine(float *distanceCm, uint8_t *angleDeg);
+
+// Lấy gợi ý không gian từ lần quét toàn cung gần nhất (phía trước thoáng, có tường trái/phải)
+void scanGetLastCorridorHint(bool *frontClear, bool *leftWall, bool *rightWall);
+
+// Quét 1 lượt liên tục (giữ nguyên phân loại tường ban đầu): thấy vật thì quét hết vật rồi dừng tính trung bình, không quét lại lần 2
+ScanStatus scanSimpleForObject(float *distanceCm, uint8_t *angleDeg);
 
 #endif // SCANNER_H

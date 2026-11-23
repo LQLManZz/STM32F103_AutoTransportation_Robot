@@ -47,6 +47,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
     Core/Src/srf05.c
     Core/Src/servo.c
+    Core/Src/grabber.c
     Core/Src/delay.c
     Core/Src/scanner.c
     Core/Src/agv.c

@@ -20,6 +20,9 @@ static bool wrapped = false;
 static bool capturing = false;
 static bool dirty = false;
 static uint8_t flushCount = 0u;
+static bool holdMode = false;
+static char prevCmd = '\0';
+static uint32_t prevCmdMs = 0u;
 
 // Đảm bảo vùng Flash lưu log không chồng lấn lên mã firmware hiện tại
 static bool isFlashRegionSafe(void)
@@ -94,6 +97,9 @@ void blackboxInit(void)
   capturing = false;
   dirty = false;
   flushCount = 0u;
+  holdMode = false;
+  prevCmd = '\0';
+  prevCmdMs = 0u;
 }
 
 void blackboxStartCapture(void)
@@ -104,9 +110,19 @@ void blackboxStartCapture(void)
   capturing = true;
 }
 
+void blackboxResumeCapture(void)
+{
+  capturing = true;
+}
+
 void blackboxStopCapture(void)
 {
   capturing = false;
+}
+
+bool blackboxIsCapturing(void)
+{
+  return capturing;
 }
 
 void blackboxPutChar(char ch)
@@ -123,10 +139,26 @@ void blackboxPutChar(char ch)
   dirty = true;
 }
 
+void blackboxWriteStr(const char *str)
+{
+  if (!str)
+    return;
+  while (*str)
+    blackboxPutChar(*str++);
+}
+
+bool blackboxHasCompleteLog(void)
+{
+  const volatile BlackboxHeader *hdr = (const volatile BlackboxHeader *)BLACKBOX_FLASH_ADDR;
+  return (hdr->magic == BLACKBOX_MAGIC_DONE) &&
+         (hdr->length > 0u) &&
+         (hdr->length <= BLACKBOX_MAX_DATA_LEN);
+}
+
 bool blackboxHasSavedLog(void)
 {
   const volatile BlackboxHeader *hdr = (const volatile BlackboxHeader *)BLACKBOX_FLASH_ADDR;
-  return (hdr->magic == BLACKBOX_MAGIC) &&
+  return ((hdr->magic == BLACKBOX_MAGIC) || (hdr->magic == BLACKBOX_MAGIC_DONE)) &&
          (hdr->length > 0u) &&
          (hdr->length <= BLACKBOX_MAX_DATA_LEN);
 }
@@ -151,29 +183,12 @@ bool blackboxErase(void)
   return ok;
 }
 
-bool blackboxFlush(void)
+// Lấy vị trí bắt đầu và độ dài hợp lệ trong ring RAM (căn sau dòng cắt nếu đã quay vòng)
+static void getRamSpan(uint16_t *outStartIdx, uint16_t *outTotalLen)
 {
-  if (!dirty)
-    return true;
-  if (flushCount >= BLACKBOX_MAX_FLUSHES)
-    return false;
-
   uint16_t totalLen = wrapped ? (uint16_t)BLACKBOX_MAX_DATA_LEN : writeIdx;
-  if (totalLen == 0u)
-    return true;
-
-  if (!isFlashRegionSafe())
-  {
-    uartSendStr("BLACKBOX_ERR fw_overlap\r\n");
-    return false;
-  }
-
-  bool prevCap = capturing;
-  capturing = false;
-
-  // Nếu ring buffer đã quay vòng, bỏ qua phần đầu bị cắt ngang cho tới hết ký tự '\n' đầu tiên
   uint16_t startIdx = wrapped ? writeIdx : 0u;
-  if (wrapped)
+  if (wrapped && totalLen > 0u)
   {
     uint16_t scanLimit = (totalLen < 160u) ? totalLen : 160u;
     for (uint16_t skip = 0u; skip < scanLimit; skip++)
@@ -190,6 +205,31 @@ bool blackboxFlush(void)
       }
     }
   }
+  *outStartIdx = startIdx;
+  *outTotalLen = totalLen;
+}
+
+static bool flushWithMagic(uint32_t magic, bool forceUpgrade)
+{
+  if (!dirty && !(forceUpgrade && !blackboxHasCompleteLog()))
+    return true;
+  if (flushCount >= BLACKBOX_MAX_FLUSHES)
+    return false;
+
+  uint16_t startIdx = 0u;
+  uint16_t totalLen = 0u;
+  getRamSpan(&startIdx, &totalLen);
+  if (totalLen == 0u)
+    return true;
+
+  if (!isFlashRegionSafe())
+  {
+    uartSendStr("BLACKBOX_ERR fw_overlap\r\n");
+    return false;
+  }
+
+  bool prevCap = capturing;
+  capturing = false;
 
   bool ok = eraseFlashPages();
   if (ok)
@@ -217,7 +257,7 @@ bool blackboxFlush(void)
   }
   if (ok)
   {
-    if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, BLACKBOX_FLASH_ADDR, BLACKBOX_MAGIC) != HAL_OK)
+    if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, BLACKBOX_FLASH_ADDR, magic) != HAL_OK)
       ok = false;
   }
 
@@ -230,6 +270,16 @@ bool blackboxFlush(void)
 
   capturing = prevCap;
   return ok;
+}
+
+bool blackboxFlush(void)
+{
+  return flushWithMagic(BLACKBOX_MAGIC, false);
+}
+
+bool blackboxFlushComplete(void)
+{
+  return flushWithMagic(BLACKBOX_MAGIC_DONE, true);
 }
 
 void blackboxDumpToUart(void)
@@ -245,10 +295,11 @@ void blackboxDumpToUart(void)
   {
     const volatile BlackboxHeader *hdr = (const volatile BlackboxHeader *)BLACKBOX_FLASH_ADDR;
     uint32_t len = hdr->length;
-    char hdrLine[80];
+    const char *stateStr = (hdr->magic == BLACKBOX_MAGIC_DONE) ? "COMPLETE" : "PARTIAL";
+    char hdrLine[96];
     snprintf(hdrLine, sizeof(hdrLine),
-             "\r\n=== BLACKBOX LOG START (len=%lu bytes) ===\r\n",
-             (unsigned long)len);
+             "\r\n=== BLACKBOX LOG START (len=%lu bytes, state=%s) ===\r\n",
+             (unsigned long)len, stateStr);
     uartSendStr(hdrLine);
 
     const volatile uint8_t *src = (const volatile uint8_t *)(BLACKBOX_FLASH_ADDR + BLACKBOX_HEADER_SIZE);
@@ -266,8 +317,108 @@ void blackboxDumpToUart(void)
     uartSendStr("\r\n=== BLACKBOX LOG END ===\r\n");
   }
 
-  uartSendStr("=== CMD: gui 'DD'=doc lai, 'CC'=xoa log, 'HH'=giu xe dung yen ===\r\n");
+  uartSendStr("=== CMD: gui 'DD'=Flash, 'RR'=RAM, 'FF'=luu, 'CC'=xoa, 'HH'=dung, 'GG'=chay ===\r\n");
   capturing = prevCap;
+}
+
+void blackboxDumpRamToUart(void)
+{
+  bool prevCap = capturing;
+  capturing = false;
+
+  uint16_t startIdx = 0u;
+  uint16_t len = 0u;
+  getRamSpan(&startIdx, &len);
+
+  if (len == 0u)
+  {
+    uartSendStr("\r\n=== BLACKBOX RAM EMPTY ===\r\n");
+  }
+  else
+  {
+    char hdrLine[80];
+    snprintf(hdrLine, sizeof(hdrLine),
+             "\r\n=== BLACKBOX RAM START (len=%lu bytes) ===\r\n",
+             (unsigned long)len);
+    uartSendStr(hdrLine);
+
+    uint8_t chunk[64];
+    uint16_t offset = 0u;
+    while (offset < len)
+    {
+      uint16_t n = (uint16_t)((len - offset > sizeof(chunk)) ? sizeof(chunk) : (len - offset));
+      for (uint16_t i = 0u; i < n; i++)
+        chunk[i] = ringByteAt(startIdx, (uint16_t)(offset + i));
+      uartSendRaw(chunk, n);
+      offset += n;
+    }
+
+    uartSendStr("\r\n=== BLACKBOX RAM END ===\r\n");
+  }
+
+  capturing = prevCap;
+}
+
+// Giải mã cặp lệnh lặp 2 ký tự (trong 1.5s) để chống nhiễu trên chân PA10 thả nổi
+static void processUartCmdChar(char ch, bool *outGoNow, bool *outResetTimeout)
+{
+  if (ch >= 'a' && ch <= 'z')
+    ch = (char)(ch - 'a' + 'A');
+  if (ch == '\r' || ch == '\n' || ch == ' ')
+    return;
+
+  if (ch != 'D' && ch != 'R' && ch != 'F' && ch != 'C' && ch != 'H' && ch != 'G')
+  {
+    prevCmd = '\0';
+    return;
+  }
+
+  uint32_t now = HAL_GetTick();
+  if ((ch == prevCmd) && ((now - prevCmdMs) <= 1500u))
+  {
+    prevCmd = '\0';
+    if (ch == 'D')
+    {
+      blackboxDumpToUart();
+      if (outResetTimeout)
+        *outResetTimeout = true;
+    }
+    else if (ch == 'R')
+    {
+      blackboxDumpRamToUart();
+      if (outResetTimeout)
+        *outResetTimeout = true;
+    }
+    else if (ch == 'F')
+    {
+      uartSendStr(blackboxFlush() ? "\r\nBLACKBOX_FLUSH OK\r\n" : "\r\nBLACKBOX_FLUSH ERR\r\n");
+      if (outResetTimeout)
+        *outResetTimeout = true;
+    }
+    else if (ch == 'C')
+    {
+      uartSendStr(blackboxErase() ? "\r\nBLACKBOX_ERASED OK\r\n" : "\r\nBLACKBOX_ERASED ERR\r\n");
+      if (outResetTimeout)
+        *outResetTimeout = true;
+    }
+    else if (ch == 'H')
+    {
+      holdMode = true;
+      uartSendStr("\r\nBLACKBOX_HOLD: xe dung yen. Gui 'DD'=Flash, 'RR'=RAM, 'FF'=luu, 'CC'=xoa, 'GG'=chay.\r\n");
+    }
+    else if (ch == 'G')
+    {
+      holdMode = false;
+      if (outGoNow)
+        *outGoNow = true;
+      uartSendStr("\r\nBLACKBOX_GO\r\n");
+    }
+  }
+  else
+  {
+    prevCmd = ch;
+    prevCmdMs = now;
+  }
 }
 
 void blackboxServiceBootCmd(uint32_t waitMs)
@@ -279,59 +430,38 @@ void blackboxServiceBootCmd(uint32_t waitMs)
     (void)huart1.Instance->DR;
 
   uint32_t startMs = HAL_GetTick();
-  bool holdMode = false;
-  char prevCmd = '\0';
-  uint32_t prevCmdMs = 0u;
+  prevCmd = '\0';
 
   while (holdMode || ((HAL_GetTick() - startMs) < waitMs))
   {
+    bool goNow = false;
+    bool resetTimeout = false;
     char ch = '\0';
-    if (!uartTryReadCleanChar(&ch))
-    {
-      HAL_Delay(5u);
-      continue;
-    }
+    while (uartTryReadCleanChar(&ch))
+      processUartCmdChar(ch, &goNow, &resetTimeout);
 
-    if (ch >= 'a' && ch <= 'z')
-      ch = (char)(ch - 'a' + 'A');
-    if (ch == '\r' || ch == '\n' || ch == ' ')
-      continue;
-
-    uint32_t now = HAL_GetTick();
-    if (ch == 'D' || ch == 'C' || ch == 'H')
-    {
-      // Yêu cầu 2 ký tự giống nhau (DD/CC/HH) trong 1.5 giây để chống nhiễu khi PA10 thả nổi
-      if ((ch == prevCmd) && ((now - prevCmdMs) <= 1500u))
-      {
-        prevCmd = '\0';
-        if (ch == 'D')
-        {
-          blackboxDumpToUart();
-          startMs = HAL_GetTick();
-        }
-        else if (ch == 'C')
-        {
-          if (blackboxErase())
-            uartSendStr("\r\nBLACKBOX_ERASED OK\r\n");
-          else
-            uartSendStr("\r\nBLACKBOX_ERASED ERR\r\n");
-          startMs = HAL_GetTick();
-        }
-        else if (ch == 'H')
-        {
-          holdMode = true;
-          uartSendStr("\r\nBLACKBOX_HOLD: xe dung yen. Gui 'DD' de doc lai, 'CC' de xoa, bam RST de chay xe.\r\n");
-        }
-      }
-      else
-      {
-        prevCmd = ch;
-        prevCmdMs = now;
-      }
-    }
-    else
-    {
-      prevCmd = '\0';
-    }
+    if (resetTimeout)
+      startMs = HAL_GetTick();
+    if (goNow && !holdMode)
+      break;
+    HAL_Delay(5u);
   }
+}
+
+bool blackboxPollUartCmd(void)
+{
+  bool goNow = false;
+  char ch = '\0';
+
+  while (uartTryReadCleanChar(&ch))
+    processUartCmdChar(ch, &goNow, NULL);
+
+  while (holdMode)
+  {
+    while (uartTryReadCleanChar(&ch))
+      processUartCmdChar(ch, &goNow, NULL);
+    HAL_Delay(5u);
+  }
+
+  return goNow;
 }

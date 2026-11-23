@@ -15,13 +15,25 @@
 #define ECHO_SRF04_PIN Echo_SRF04_Pin        // PA12 (Input) - nhận xung Echo SRF04 (cảm biến trên)
 #define ECHO_SRF04_PORT Echo_SRF04_GPIO_Port
 
-#define SENSOR_DEPTH_OFFSET_CM 7.0f           // Chênh lệch khoảng cách: SRF04 nằm lùi về phía sau 7 cm so với SRF05
-#define SCAN_OBSTACLE_TOLERANCE_CM 10.0f      // Dung sai độ lệch (sau khi bù 7 cm) để kết luận vật cản
-#define SCAN_CLUSTER_DEPTH_JUMP_CM 10.0f      // Ngưỡng nhảy khoảng cách d05 cục bộ để tách riêng 2 vật gần/xa (cm)
-#define SCAN_CLUSTER_MAX_DEPTH_SPAN_CM 12.0f  // Biên độ độ sâu tối đa trong cùng 1 cụm để chống trôi cụm (cm)
-#define SCAN_CORE_DEPTH_MARGIN_CM 3.0f        // Biên độ tính từ điểm gần nhất để xác định vùng lõi cụm (cm)
-#define SCAN_OBS_GUARD_STEPS 2u               // Số bước góc quanh điểm OBSTACLE để loại bỏ mép tường giả
-#define SCAN_OBS_GUARD_DEPTH_CM 6.0f          // Ngưỡng chênh lệch độ sâu xóa mép tường giả quanh OBSTACLE (cm)
+#define SENSOR_DEPTH_OFFSET_CM 7.0f          // Chênh lệch khoảng cách: SRF04 nằm lùi về phía sau 7 cm so với SRF05
+#define SCAN_OBSTACLE_TOLERANCE_CM 2.5f      // Dung sai độ lệch (sau khi bù 7 cm) để kết luận tường (dựa trên log thực đo)
+#define SCAN_SEG_JUMP_CM 5.0f                // Ngưỡng nhảy d05 giữa 2 bước liên tiếp để tách đoạn bề mặt (cm)
+#define SCAN_CORE_DEPTH_MARGIN_CM 3.0f       // Biên độ từ điểm gần nhất trong cụm để tính tâm góc và cự ly lõi (cm)
+#define SCAN_WALL_MIN_SPAN_DEG 66u           // Bề rộng góc tối thiểu của mặt tường phẳng khi SRF04 mất sóng (độ)
+#define SCAN_WALL_OBS_MIN_HITS 4u            // Số điểm W tối thiểu trên đoạn dài (>= 10 điểm) để chốt tường từ SRF04
+#define SCAN_WALL_RAMP_MIN_WIDTH_CM 10.0f    // Bề ngang 2D tối thiểu của tường nghiêng đơn điệu khi SRF04 trượt gương (cm)
+#define SCAN_WALL_RAMP_MIN_DELTA_CM 4.0f     // Độ chênh khoảng cách tối thiểu giữa 2 đầu đoạn tường nghiêng (cm)
+#define SCAN_WALL_RAMP_MONO_TOL_CM 1.5f      // Dung sai nhiễu cho phép khi kiểm tra dốc đơn điệu tường nghiêng (cm)
+#define SCAN_WALL_LINE_ERR_CM 2.5f           // Sai lệch đường thẳng 2D tối đa để kết luận mặt tường phẳng/nghiêng (cm)
+#define SCAN_WALL_BUMP_MIN_CM 2.2f           // Độ nhô về phía xe tối thiểu so với dây cung cục bộ để bắt vật sát tường (cm)
+#define SCAN_WALL_BUMP_HALF_STEPS 8u         // Nửa cửa sổ bước góc (±24°) lấy 2 vai tường cho dây cung cục bộ
+#define SCAN_BUMP_MAX_SPAN_DEG 45u           // Bề rộng góc tối đa của cục lồi vật sát tường (độ)
+#define SCAN_OBJ_MAX_SPAN_DEG 63u            // Bề rộng góc tối đa của cụm vật độc lập (tính cả loe chùm siêu âm, độ)
+#define SCAN_BUMP_VERIFY_TOL_CM 4.0f         // Sai lệch d05 tối đa khi xác minh tâm vật sát tường (cm)
+#define SCAN_CLOSE_WALL_SRF04_CM 30.0f       // Nếu d05 == -1 nhưng SRF04 <= ngưỡng này thì kết luận tường sát mũi (cm)
+#define SCAN_CLOSE_WALL_MIN_DEG 60u          // Góc bắt đầu cung phát hiện tường áp sát nguy hiểm (độ)
+#define SCAN_CLOSE_WALL_MAX_DEG 120u         // Góc kết thúc cung phát hiện tường áp sát nguy hiểm (độ)
+#define SCAN_FRONT_BLIND_WALL_HITS 3u        // Số điểm mù liên tục trước mũi (80°..100°) kích hoạt thoát kẹt tường
 
 #define SERVO_MIN_PULSE_US 600u      // Độ rộng xung ứng với 0° (us), tick timer = 1 us
 #define SERVO_MAX_PULSE_US 2400u     // Độ rộng xung ứng với 180° (us)
@@ -35,7 +47,7 @@
 #define SERVO_INIT_SETTLE_MS 500u    // Chờ servo quay về góc HOME 90° khi khởi động/reset (ms)
 
 #define SCAN_MIN_RANGE_CM 3.0f   // Khoảng cách tối thiểu (cm), gần hơn coi như không có vật
-#define SCAN_MAX_RANGE_CM 80.0f  // Bán kính quét tối đa lấy tâm SRF05 dưới (cm), hạn chế khuếch tán sóng âm
+#define SCAN_MAX_RANGE_CM 100.0f // Bán kính quét tối đa lấy tâm SRF05 dưới (cm)
 #define SRF05_MAX_RANGE_CM SCAN_MAX_RANGE_CM // Giới hạn đo SRF05 dưới (cm)
 #define SRF04_MAX_RANGE_CM (SCAN_MAX_RANGE_CM + SENSOR_DEPTH_OFFSET_CM + SCAN_OBSTACLE_TOLERANCE_CM) // Giới hạn đo SRF04 trên (bù lùi 7 cm + dung sai phân loại tường)
 #define SCAN_MIN_DEG SERVO_SAFE_MIN_DEG // Góc bắt đầu cung quét (45°, bên phải 45°)
@@ -57,16 +69,22 @@
 #define SCAN_VERIFY_MIN_HITS 3u         // Số mẫu TARGET_OBJECT hợp lệ tối thiểu để chốt cụm
 #define SCAN_VERIFY_MAX_OBS_HITS 1u     // Số mẫu TARGET_OBSTACLE tối đa cho phép khi xác minh vật
 #define SCAN_VERIFY_DEPTH_TOL_CM 8.0f   // Sai lệch khoảng cách tối đa khi xác minh tại tâm cụm (cm)
-#define SCAN_CLUSTER_MAX_SPAN_DEG 45u   // Bề rộng góc tối đa của vật ở cự ly > ngưỡng gần để loại tường nghiêng (độ)
-#define SCAN_CLUSTER_MAX_SPAN_NEAR_CM 25.0f // Khoảng cách gần cho phép góc quét vật rộng hơn (cm)
 #define SCAN_WALL_MIN_DEG 80u           // Góc bắt đầu vùng thẳng trước mũi xe để xác nhận tường (độ)
 #define SCAN_WALL_MAX_DEG 100u          // Góc kết thúc vùng thẳng trước mũi xe để xác nhận tường (độ)
 #define SCAN_WALL_DEPTH_SPREAD_CM 12.0f // Ngưỡng nhất quán độ sâu các điểm tường thẳng trước mũi (cm)
+#define SCAN_SIDE_WALL_LEFT_MIN_DEG 108u  // Góc tối thiểu xác định tường bên trái để gợi ý hướng mở rộng (độ)
+#define SCAN_SIDE_WALL_RIGHT_MAX_DEG 72u  // Góc tối đa xác định tường bên phải để gợi ý hướng mở rộng (độ)
+#define SCAN_FRONT_CLEAR_MIN_DEG 75u      // Góc bắt đầu vùng kiểm tra thông thoáng phía trước mũi (độ)
+#define SCAN_FRONT_CLEAR_MAX_DEG 105u     // Góc kết thúc vùng kiểm tra thông thoáng phía trước mũi (độ)
+#define SCAN_EXPAND_CLEAR_CM 45.0f        // Khoảng trống tối thiểu phía trước để tiến dọc hành lang khi chưa thấy vật (cm)
 
 #define SCAN_FINE_MIN_DEG 60u   // Góc bắt đầu quét hẹp vi chỉnh quanh HOME
 #define SCAN_FINE_MAX_DEG 120u  // Góc kết thúc quét hẹp vi chỉnh
 #define SCAN_FINE_STEP_DEG 3u   // Bước góc quét hẹp (độ)
+#define SCAN_FINE_ACCEPT_MIN_DEG 72u  // Góc nhỏ nhất hợp lệ của cụm mục tiêu trong quét tinh sau xoay thô (độ)
+#define SCAN_FINE_ACCEPT_MAX_DEG 108u // Góc lớn nhất hợp lệ của cụm mục tiêu trong quét tinh sau xoay thô (độ)
 #define AGV_FINE_DEADBAND_DEG 2 // Sai lệch góc <= giá trị này coi như đã thẳng
+#define SCAN_TEST_WAIT_SEC 20u  // Thời gian nghỉ dựng ngữ cảnh giữa các bài test scanner (giây)
 
 #define TRIGGER_RESET_US 10u        // Thời gian giữ Trigger mức LOW trước khi phát xung (us)
 #define TRIGGER_PULSE_US 15u        // Độ rộng xung Trigger >= 10 us (15 us để lái chắc cảm biến)
@@ -89,7 +107,7 @@
 
 // --- Màn hình OLED SSD1306 128x64 (I2C2: SCL = PB10, SDA = PB11) ---
 #define OLED_I2C_ADDR (0x3Cu << 1) // Địa chỉ 7 bit 0x3C, HAL cần dạng dịch trái 1 bit
-#define OLED_I2C_TIMEOUT_MS 50u    // Chờ tối đa mỗi lần gửi (ms), OLED không gắn thì không treo
+#define OLED_I2C_TIMEOUT_MS 15u    // Chờ tối đa mỗi lần gửi (ms), đủ ghi 1 dòng 400 kHz mà không treo vòng lặp
 #define OLED_WIDTH_PX 128u         // Chiều ngang màn hình OLED (px)
 #define OLED_LINES 4u              // Số dòng chữ (mỗi dòng cao 2 page)
 #define OLED_LINE_CHARS 21u        // Số ký tự mỗi dòng: 128 px / 6 px (rộng 1x, cao 2x)
@@ -126,7 +144,6 @@
 #define SERVO_PIVOT_OFFSET_CM 6.5f // Khoảng cách từ tâm trục 2 bánh tới trục servo SG90 (cm)
 #define SENSOR_FACE_OFFSET_CM 3.5f // Khoảng cách từ trục servo tới mặt đầu dò SRF05 trên ngàm (cm)
 #define OBJ_CENTER_OFFSET_CM 1.0f  // Nửa bề dày vật cần gắp để tính tọa độ tâm vật (cm)
-#define AGV_APPROACH_SPEED 30u     // Tốc độ tiến cố định (% PWM) khi tiến tới tường
 #define PID_DIST_TARGET_CM 3.5f    // Cự ly dừng mong muốn trước mặt vật tính từ đầu dò (cm)
 #define PID_DIST_TOLERANCE_CM 0.5f // Dung sai dừng tường (cm)
 #define PID_SAMPLE_TIME_MS 60u     // Chu kỳ đo SRF05/SRF04 (ms, cần >= 50)
@@ -135,11 +152,16 @@
 #define AGV_POST_SPIN_MAX_ERR_DEG 15.0f // Sai lệch hướng tối đa sau xoay thô trước khi hủy chạy (độ)
 #define AGV_APPROACH_MAX_STEPS 2u       // Số bước chạy PID tối đa khi tiếp cận tâm vật
 #define AGV_ARRIVE_TOLERANCE_CM 2.5f    // Khoảng cách cộng thêm vào đích khi đo kiểm tra sau khi dừng (cm)
+#define AGV_DRIVE_MISS_RATIO 0.5f       // Tỉ lệ quãng đường tiến tối thiểu phải rút ngắn được trước mặt vật (hủy nếu d05 không giảm đủ)
+#define AGV_DRIVE_MISS_MIN_STEP_CM 15   // Quãng đường tiến tối thiểu để kiểm tra hiện tượng chạy trượt khỏi vật (cm)
+#define AGV_CORRIDOR_STEP_CM 25         // Bước tiến dọc hành lang thông thoáng khi chưa thấy vật trong 80 cm (cm)
+#define AGV_MAX_CORRIDOR_STEPS 3u       // Số bước tiến dọc hành lang tối đa liên tiếp tránh đi quá xa vào vùng trống
 #define AGV_SCAN_EXPAND_SPIN_DEG -75    // Góc xoay xe tại chỗ để đổi vùng quét khi trống (CCW 75°, chồng lấn 15°)
 
 // --- Xử lý khi phát hiện tường (vật cản cao >= 11 cm) ---
-#define WALL_STOP_DIST_CM 10.0f    // Cự ly dừng sát tường (cm)
-#define WALL_CHECK_SAMPLES 3u      // Số lần đo kiểm tra tường mỗi bên trái/phải
+#define WALL_BACKUP_TRIGGER_CM 15.0f // Cự ly tường quá gần (kể cả -2/-1) bắt buộc lùi tạo không gian xoay (cm)
+#define WALL_BACKUP_DIST_CM 15       // Quãng đường lùi thoát khỏi tường trước khi xoay tránh (cm)
+#define WALL_CHECK_SAMPLES 3u        // Số lần đo kiểm tra tường mỗi bên trái/phải
 #define WALL_TURN_LEFT_DEG -90     // Góc quay trái tránh tường (độ)
 #define WALL_TURN_RIGHT_DEG 90     // Góc quay phải tránh tường (độ)
 #define WALL_TURN_BACK_DEG 180     // Góc quay đầu khi cả trái và phải đều có tường (độ)
@@ -221,9 +243,10 @@
 #define IMU_SPIN_KICK_DUTY 460u      // Xung mồi đủ khỏe khi xoay để thắng ma sát tĩnh 2 bánh trên mọi bề mặt (0 - 999)
 #define IMU_SPIN_KICK_MS 40u         // Thời gian xung mồi khi bắt đầu xoay (ms)
 #define IMU_SPIN_DECEL_DEG 20.0f     // Góc còn lại <= ngưỡng này thì giảm tốc dần về PID_DECEL_SPIN_RPM (°)
-#define IMU_SPIN_LEAD_DEG 1.5f       // Ngắt sớm trước đích để bù quán tính phanh ở tốc độ chậm (°)
+#define IMU_SPIN_LEAD_DEG 0.5f       // Góc ngắt sớm tối thiểu bù trễ vòng đọc IMU và DLPF (°)
+#define IMU_SPIN_LEAD_SEC 0.045f     // Hệ số ngắt sớm theo vận tốc góc khi phanh ngắn mạch (giây)
 #define IMU_SPIN_TOL_DEG 0.8f        // Ngưỡng sai số nhỏ nhất ổn định với độ rơ bánh răng TT 1:48 (°)
-#define IMU_SPIN_MAX_TRIMS 4u        // Số lượt nhích vi chỉnh tối đa để kéo góc về trong +-0.8°
+#define IMU_SPIN_MAX_TRIMS 0u        // Tắt vi chỉnh vì gây lắc qua lại khi dùng motor TT
 #define IMU_SPIN_TRIM_DUTY 400u      // Duty khởi điểm nhích vi chỉnh nhẹ đủ thắng ma sát tĩnh (0 - 999)
 #define IMU_SPIN_TRIM_STEP_DUTY 45u  // Tăng dần duty thêm mỗi lượt vi chỉnh nếu bánh chưa thắng ma sát tĩnh
 #define IMU_SPIN_TRIM_LEAD_DEG 0.25f // Ngắt sớm ở pha nhích vi chỉnh chậm (°)
@@ -247,7 +270,32 @@
 #define BLACKBOX_HEADER_SIZE 8u                                           // Header 8 byte: magic (4B) + length (4B)
 #define BLACKBOX_MAX_DATA_LEN (BLACKBOX_FLASH_SIZE - BLACKBOX_HEADER_SIZE) // 8184 byte dữ liệu ASCII
 #define BLACKBOX_MAGIC 0x4C4F4731UL                                       // Chữ ký nhận diện log hợp lệ ("LOG1")
+#define BLACKBOX_MAGIC_DONE 0x4C4F4732UL                                  // Chữ ký nhận diện log đã hoàn tất trọn bộ ("LOG2")
 #define BLACKBOX_BOOT_WAIT_MS 3000u                                       // Chờ lệnh UART (DD/CC/HH) sau khi dump log (ms)
-#define BLACKBOX_MAX_FLUSHES 8u                                           // Giới hạn tối đa số lần ghi Flash mỗi lần bật nguồn
+#define BLACKBOX_MAX_FLUSHES 16u                                          // Giới hạn tối đa số lần ghi Flash mỗi lần bật nguồn
+
+// --- Tay gắp 2 servo 180° (Kẹp: TIM2 CH1 = PA0, Nâng hạ: TIM1 CH4 = PA11) ---
+#define GRABBER_GRIP_TIM htim2             // Timer PWM servo kẹp (50 Hz, 1 tick = 1 us)
+#define GRABBER_GRIP_CHANNEL TIM_CHANNEL_1 // Kênh PWM servo kẹp (PA0)
+#define GRABBER_LIFT_TIM htim1             // Timer PWM servo nâng hạ (50 Hz, 1 tick = 1 us)
+#define GRABBER_LIFT_CHANNEL TIM_CHANNEL_4 // Kênh PWM servo nâng hạ (PA11)
+
+#define GRABBER_MIN_PULSE_US 500u          // Độ rộng xung ứng với 0° của servo tay gắp (us)
+#define GRABBER_MAX_PULSE_US 2500u         // Độ rộng xung ứng với 180° của servo tay gắp (us)
+#define GRABBER_MAX_ANGLE_DEG 180u         // Góc quay tối đa của servo tay gắp (độ)
+
+#define GRABBER_GRIP_OPEN_DEG 110u         // Góc mở ngàm kẹp (độ)
+#define GRABBER_GRIP_CLOSE_DEG 180u        // Góc đóng ngàm kẹp chặt vật (độ)
+#define GRABBER_LIFT_DOWN_DEG 180u         // Góc hạ cần sát mặt đất (độ)
+#define GRABBER_LIFT_UP_DEG 90u            // Góc nâng cần lên khỏi mặt đất (độ)
+
+#define GRABBER_SMOOTH_STEP_DEG 1u         // Bước góc khi quay mượt servo tay gắp (độ)
+#define GRABBER_SMOOTH_DELAY_MS 15u        // Độ trễ giữa mỗi bước quay mượt (ms)
+#define GRABBER_INIT_SETTLE_MS 1000u       // Chờ 2 servo tay gắp ổn định vị trí chờ khi khởi động (ms)
+#define GRABBER_ACTION_SETTLE_MS 300u      // Chờ ổn định giữa các bước hạ/kẹp/nhả (ms)
+#define GRABBER_TEST_WAIT_MS 3000u         // Thời gian chờ trước khi gắp trong chu kỳ test (ms)
+#define GRABBER_TEST_HOLD_MS 5000u         // Thời gian giữ vật trên không trong chu kỳ test (ms)
+#define GRABBER_VERIFY_DIST_TOL_CM 8.0f    // Sai lệch cự ly tối đa so với vị trí ban đầu để xác nhận vật còn/đã đặt lại (cm)
+#define GRABBER_VERIFY_HOLD_MS 1500u       // Thời gian giữ hiển thị kết quả xác minh gắp/nhả trên OLED (ms)
 
 #endif // PROJECT_CONFIG_H

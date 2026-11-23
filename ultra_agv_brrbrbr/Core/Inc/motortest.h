@@ -1,6 +1,8 @@
 #ifndef MOTORTEST_H
 #define MOTORTEST_H
 
+#include <stdint.h>
+
 // Chạy một lần kịch bản test động cơ: tiến, lùi, quay phải/trái 90°, quay phải/trái 180°
 void motorTestRun(void);
 
@@ -27,5 +29,14 @@ void motorTestWaypointsRun(void);
 
 // Kịch bản test chuẩn: tiến 1m, lùi 1m, xoay trái/phải 45°, 90°, 180° (có đếm ngược 3s trên OLED)
 void motorTestMotionSuiteRun(void);
+
+// Test PID xoay góc chuẩn (90, -90, 180, -180) và tổ hợp góc tùy ý (tổng về 0°)
+void motorTestPidSpinRun(void);
+
+// Test PID chạy thẳng tiến/lùi 50 cm về gốc
+void motorTestPidDriveRun(void);
+
+// Test PID xoay 1 góc tùy ý (>0 phải, <0 trái)
+void motorTestPidSpinAngleRun(int16_t angleDeg);
 
 #endif // MOTORTEST_H

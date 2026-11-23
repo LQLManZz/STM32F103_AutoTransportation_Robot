@@ -15,4 +15,7 @@ void moveServoSmooth(uint8_t targetDeg);
 // Đọc góc servo hiện tại từ độ rộng xung PWM
 uint8_t getServoAngle(void);
 
+// Ngắt xung PWM servo quét để cắt dòng giữ khi tay gắp hoạt động
+void servoStop(void);
+
 #endif // SERVO_H

@@ -61,4 +61,7 @@ void debugNavPreview(uint8_t idx, uint8_t total, float curX, float curY, float c
 void debugStepPreview(uint8_t stepIdx, uint8_t stepTotal, const char *nextAction,
                       uint8_t secLeft, bool imuReady);
 
+// Báo góc 2 servo tay gắp và trạng thái thao tác lên Serial + OLED
+void debugGrabber(uint8_t gripDeg, uint8_t liftDeg, const char *action, const char *status);
+
 #endif // DEBUG_H

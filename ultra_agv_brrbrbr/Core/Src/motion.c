@@ -353,9 +353,6 @@ static void runSpinImuLoop(int16_t angleDeg, uint16_t targetRpm, uint16_t decelR
   float expectedSign = (angleDeg > 0) ? -1.0f : 1.0f;
   float targetAbsDeg = (float)abs(angleDeg);
   float targetSignedYaw = expectedSign * targetAbsDeg;
-  float stopAbsDeg = (targetAbsDeg > IMU_SPIN_LEAD_DEG)
-                         ? (targetAbsDeg - IMU_SPIN_LEAD_DEG)
-                         : (targetAbsDeg * 0.7f);
 
   encoderResetPulses();
   imuResetYaw();
@@ -386,7 +383,13 @@ static void runSpinImuLoop(int16_t angleDeg, uint16_t targetRpm, uint16_t decelR
     {
       lastImuMs = nowMs;
       turnedAbs = imuUpdate() * expectedSign;
-      if (turnedAbs >= stopAbsDeg)
+      float spinRateDps = imuGetRateDps() * expectedSign;
+      if (spinRateDps < 0.0f)
+        spinRateDps = 0.0f;
+      float leadDeg = spinRateDps * IMU_SPIN_LEAD_SEC;
+      if (leadDeg < IMU_SPIN_LEAD_DEG)
+        leadDeg = IMU_SPIN_LEAD_DEG;
+      if ((turnedAbs + leadDeg) >= targetAbsDeg)
         break;
       if (turnedAbs < IMU_SPIN_OPPOSITE_LIMIT_DEG)
       {
@@ -425,9 +428,10 @@ static void runSpinImuLoop(int16_t angleDeg, uint16_t targetRpm, uint16_t decelR
     HAL_Delay(1);
   }
 
-  motionBrake();
+  // Phanh ngắn mạch trực tiếp và đọc IMU liên tục để tránh bật ngược và mù IMU
+  motorBrakeAll();
   waitImuMs(SPIN_BRAKE_DELAY_MS);
-  motionStop();
+  motorStopAll();
   waitImuMs(IMU_SPIN_SETTLE_MS);
   debugDecision(decision);
 
@@ -466,7 +470,7 @@ static void runSpinImuLoop(int16_t angleDeg, uint16_t targetRpm, uint16_t decelR
     // Pha vi chỉnh chạy rất chậm nên phanh ngắn mạch trực tiếp, tránh xung đảo chiều làm bật ngược lại
     motorBrakeAll();
     waitImuMs(IMU_TRIM_BRAKE_MS);
-    motionStop();
+    motorStopAll();
     waitImuMs(IMU_TRIM_SETTLE_MS);
     if (fabsf(imuGetYawDeg() - yawBefore) < 0.5f)
     {

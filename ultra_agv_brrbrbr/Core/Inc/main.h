@@ -59,6 +59,8 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define Grabber_grip_Pin GPIO_PIN_0
+#define Grabber_grip_GPIO_Port GPIOA
 #define Servo_sig_Pin GPIO_PIN_1
 #define Servo_sig_GPIO_Port GPIOA
 #define motor_IN1_Pin GPIO_PIN_2
@@ -83,8 +85,12 @@ void Error_Handler(void);
 #define Trig_SRF05_GPIO_Port GPIOB
 #define Echo_SRF05_Pin GPIO_PIN_8
 #define Echo_SRF05_GPIO_Port GPIOA
+#define Grabber_lift_Pin GPIO_PIN_11
+#define Grabber_lift_GPIO_Port GPIOA
 #define Echo_SRF04_Pin GPIO_PIN_12
 #define Echo_SRF04_GPIO_Port GPIOA
+#define blackbox_CS_Pin GPIO_PIN_15
+#define blackbox_CS_GPIO_Port GPIOA
 #define Encoder_R_Pin GPIO_PIN_6
 #define Encoder_R_GPIO_Port GPIOB
 #define Encoder_R_EXTI_IRQn EXTI9_5_IRQn
