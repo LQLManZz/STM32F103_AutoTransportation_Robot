@@ -3,7 +3,7 @@
 
 #include "stm32f1xx_hal.h"
 
-// Bật PWM 2 servo tay gắp và đưa về vị trí chờ (cần nâng, ngàm mở)
+// Khởi tạo trạng thái logic 2 servo tay gắp ở vị trí chờ nhưng luôn ngắt PWM cho tới khi cần gắp
 void grabberInit(void);
 
 // Đặt trực tiếp góc servo kẹp (0°..180°)
@@ -31,7 +31,13 @@ void grabberRelease(void);
 // Chạy 1 chu kỳ test gắp - giữ - nhả (tương đương vòng lặp test trong tay.gap)
 void grabberTestCycle(void);
 
-// Ngắt xung PWM servo kẹp khi ngàm đang mở không tải để giảm dòng giữ
+// Ngắt xung PWM servo kẹp an toàn không giật
 void grabberGripStop(void);
+
+// Ngắt xung PWM servo nâng hạ an toàn không giật
+void grabberLiftStop(void);
+
+// Ngắt toàn bộ xung PWM của cả 2 servo tay gắp
+void grabberStopAll(void);
 
 #endif // GRABBER_H

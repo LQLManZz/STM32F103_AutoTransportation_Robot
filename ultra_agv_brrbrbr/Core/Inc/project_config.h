@@ -150,8 +150,17 @@
 #define PID_TIMEOUT_MS 8000u       // Timeout tiếp cận tối đa (ms)
 #define PID_LOST_MAX 3u            // Số lần mất tường liên tiếp thì bỏ cuộc
 #define AGV_POST_SPIN_MAX_ERR_DEG 15.0f // Sai lệch hướng tối đa sau xoay thô trước khi hủy chạy (độ)
-#define AGV_APPROACH_MAX_STEPS 2u       // Số bước chạy PID tối đa khi tiếp cận tâm vật
+#define AGV_APPROACH_MAX_STEPS 3u       // Số bước chạy PID tối đa khi tiếp cận và vi chỉnh tầm gắp vật
 #define AGV_ARRIVE_TOLERANCE_CM 2.5f    // Khoảng cách cộng thêm vào đích khi đo kiểm tra sau khi dừng (cm)
+#define AGV_WALL_CONFIRM_DIST_CM 24.0f  // Cự ly tối đa xác nhận tường chắc chắn; xa hơn thì tiến lại gần soi lại (cm)
+#define AGV_WALL_INSPECT_TARGET_CM 20.0f // Cự ly mục tiêu khi tiến lại kiểm chứng vật/tường (cm)
+#define AGV_INSPECT_MIN_STEP_CM 5       // Bước tiến tối thiểu mỗi nhịp kiểm chứng (cm)
+#define AGV_INSPECT_MAX_STEP_CM 25      // Bước tiến tối đa mỗi nhịp kiểm chứng (cm)
+#define AGV_MAX_INSPECT_STEPS 2u        // Số nhịp tiến kiểm chứng tường xa tối đa liên tiếp
+#define AGV_MAX_EXPAND_SPINS 5u         // Số lần xoay tìm tối đa trước khi tiến 1 bước khi phía trước thoáng
+#define AGV_GRAB_DIST_MIN_CM 2.5f       // Cự ly tối thiểu trước đầu dò để càng gắp không đè lên vật (cm)
+#define AGV_GRAB_DIST_MAX_CM 5.0f       // Cự ly tối đa trước đầu dò để càng gắp chụp trúng vật ngay (cm)
+#define AGV_GRAB_BACKUP_CM 3            // Bước lùi nhẹ khi quá sát để đưa vật về đúng tầm gắp (cm)
 #define AGV_DRIVE_MISS_RATIO 0.5f       // Tỉ lệ quãng đường tiến tối thiểu phải rút ngắn được trước mặt vật (hủy nếu d05 không giảm đủ)
 #define AGV_DRIVE_MISS_MIN_STEP_CM 15   // Quãng đường tiến tối thiểu để kiểm tra hiện tượng chạy trượt khỏi vật (cm)
 #define AGV_CORRIDOR_STEP_CM 25         // Bước tiến dọc hành lang thông thoáng khi chưa thấy vật trong 80 cm (cm)

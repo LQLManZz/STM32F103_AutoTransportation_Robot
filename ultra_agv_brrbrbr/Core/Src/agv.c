@@ -15,8 +15,6 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
-// Tạm thời comment thuật toán đầy đủ để test scanner quét thấy vật và tiến tới đơn giản
-/*
 typedef enum
 {
   AGV_STATE_INIT_CALIB = 0,
@@ -28,9 +26,12 @@ static AgvState agvState = AGV_STATE_INIT_CALIB;
 static NavPose robotPose = {0.0f, 0.0f, 0.0f};
 static NavPose objectCenter = {0.0f, 0.0f, 0.0f};
 static uint8_t corridorSteps = 0u;
+static uint8_t inspectSteps = 0u;
+static uint8_t expandSpinCount = 0u;
 static int16_t prevExpandSpin = 0;
 static bool justEscapedWall = false;
 static uint8_t wallEscapeCount = 0u;
+static bool hadCompleteLog = false;
 
 static float normalizeDeg(float deg)
 {
@@ -39,11 +40,45 @@ static float normalizeDeg(float deg)
   return deg;
 }
 
+// Tính bước tiến để đưa tường/vật nghi ngờ về cự ly kiểm chứng ~20 cm
+static int16_t computeInspectDriveCm(float wallDistCm)
+{
+  int16_t step = (int16_t)lroundf(wallDistCm - AGV_WALL_INSPECT_TARGET_CM);
+  if (step < AGV_INSPECT_MIN_STEP_CM)
+    return AGV_INSPECT_MIN_STEP_CM;
+  if (step > AGV_INSPECT_MAX_STEP_CM)
+    return AGV_INSPECT_MAX_STEP_CM;
+  return step;
+}
+
+// Kiểm tra cự ly trước đầu dò có nằm trong cửa sổ hạ càng gắp trúng vật hay không
+static bool isInGrabRange(float d05)
+{
+  return (d05 >= AGV_GRAB_DIST_MIN_CM) && (d05 <= AGV_GRAB_DIST_MAX_CM);
+}
+
+// Xác nhận tường thật gần mũi để không nhầm vật sát tường hoặc vật vượt quá mũi thành tường
+static bool isCloseWallSample(float d05, float d04)
+{
+  if ((scanClassifyTarget(d05, d04) == TARGET_OBSTACLE) && (d05 <= AGV_WALL_CONFIRM_DIST_CM))
+    return true;
+  if (d05 >= 0.0f && d05 < SCAN_MIN_RANGE_CM && d04 >= 0.0f &&
+      fabsf((d04 - SENSOR_DEPTH_OFFSET_CM) - d05) <= SCAN_OBSTACLE_TOLERANCE_CM)
+    return true;
+  if (d05 == ECHO_ERROR_TOO_CLOSE && d04 >= 0.0f &&
+      d04 <= (2.0f + SENSOR_DEPTH_OFFSET_CM + SCAN_OBSTACLE_TOLERANCE_CM))
+    return true;
+  if (d05 == ECHO_ERROR_TIMEOUT && (d04 <= SCAN_CLOSE_WALL_SRF04_CM || d04 < 0.0f))
+    return true;
+  return false;
+}
+
 static void spinAndTrackPose(int16_t spinCmdDeg)
 {
   if (spinCmdDeg == 0)
     return;
 
+  servoStop();
   motionSpinAnglePid(spinCmdDeg, PID_TARGET_SPIN_RPM);
   if (imuIsReady())
   {
@@ -62,6 +97,7 @@ static void drivePidAndTrackPose(int16_t driveCm)
   if (driveCm == 0)
     return;
 
+  servoStop();
   motionDriveDistancePid(driveCm, PID_TARGET_DRIVE_RPM);
 
   uint32_t avgPulses = (encoderGetPulses(MOTOR_LEFT) + encoderGetPulses(MOTOR_RIGHT)) / 2u;
@@ -91,8 +127,6 @@ static NavPose computeObjectCenter(uint8_t servoAngleDeg, float sensorDistCm)
   obj.thetaDeg = normalizeDeg(rayAngleDeg);
   return obj;
 }
-*/
-
 // Bật hoặc tắt tạm ngắt encoder để tránh delayUs(20) trong ISR làm sai lệch độ rộng xung Echo khi xe đứng yên
 static void setEncoderIrq(bool enable)
 {
@@ -106,7 +140,6 @@ static void setEncoderIrq(bool enable)
   HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 }
 
-/*
 // Đo kiểm tra tường phía trước mũi xe (giữ servo cố định tại HOME 90°)
 static bool checkWallAhead(float *outDistCm)
 {
@@ -124,7 +157,7 @@ static bool checkWallAhead(float *outDistCm)
     float d04RawCm = ECHO_ERROR_TIMEOUT;
     measureDualDistanceCM(&d05RawCm, &d04RawCm);
     ScanTargetType type = scanClassifyTarget(d05RawCm, d04RawCm);
-    bool isWall = (type == TARGET_OBSTACLE) ||
+    bool isWall = (type == TARGET_OBSTACLE && d05RawCm <= AGV_WALL_CONFIRM_DIST_CM) ||
                   (d05RawCm == ECHO_ERROR_TOO_CLOSE) ||
                   (d05RawCm > 0.0f && d05RawCm < SCAN_MIN_RANGE_CM) ||
                   (d05RawCm == ECHO_ERROR_TIMEOUT &&
@@ -224,6 +257,7 @@ static bool goToDetectedObject(float distanceCm, uint8_t angleDeg)
 
   moveServoSmooth(SCAN_HOME_ANGLE);
   HAL_Delay(SCAN_SETTLE_MS);
+  servoStop();
   int16_t coarseCmd = 0;
   int16_t fineSpinDeg = 0;
   if (fabsf(turnMathDeg) > (float)AGV_FINE_DEADBAND_DEG)
@@ -254,13 +288,36 @@ static bool goToDetectedObject(float distanceCm, uint8_t angleDeg)
            fineFound ? 1 : 0, fineAngle, debugF1(fineDist));
   if (fineStatus == SCAN_WALL_FOUND)
   {
-    debugAlign(coarseCmd, fineAngle, fineSpinDeg, fineDist, false);
-    debugLog("ABORT_DRIVE fine_is_wall d=%s\r\n", debugF1(fineDist));
-    if (coarseCmd != 0)
-      spinAndTrackPose((int16_t)(-coarseCmd));
+    if (fineDist > AGV_WALL_CONFIRM_DIST_CM && fineDist <= SCAN_MAX_RANGE_CM)
+    {
+      // Tường nghi ngờ ở xa > 24 cm: tiến lại ~20 cm rồi quét tinh lại trước khi kết luận
+      int16_t inspCm = computeInspectDriveCm(fineDist);
+      debugLog("FINE_INSPECT d=%s drive=%dcm\r\n", debugF1(fineDist), inspCm);
+      drivePidAndTrackPose(inspCm);
+      setEncoderIrq(false);
+      fineStatus = scanFine(&fineDist, &fineAngle);
+      setEncoderIrq(true);
+      fineFound = (fineStatus == SCAN_OBJECT_FOUND);
+      debugLog("SCAN_FINE found=%d fine_ang=%u fine_d=%s\r\n",
+               fineFound ? 1 : 0, fineAngle, debugF1(fineDist));
+      if (fineStatus == SCAN_WALL_FOUND)
+      {
+        debugAlign(coarseCmd, fineAngle, fineSpinDeg, fineDist, false);
+        debugLog("ABORT_DRIVE fine_is_wall d=%s\r\n", debugF1(fineDist));
+        handleWall(fineDist);
+        return false;
+      }
+    }
     else
-      handleWall(fineDist);
-    return false;
+    {
+      debugAlign(coarseCmd, fineAngle, fineSpinDeg, fineDist, false);
+      debugLog("ABORT_DRIVE fine_is_wall d=%s\r\n", debugF1(fineDist));
+      if (coarseCmd != 0)
+        spinAndTrackPose((int16_t)(-coarseCmd));
+      else
+        handleWall(fineDist);
+      return false;
+    }
   }
   if (!fineFound)
   {
@@ -283,40 +340,80 @@ static bool goToDetectedObject(float distanceCm, uint8_t angleDeg)
     setEncoderIrq(true);
     if (scanClassifyTarget(chk05, chk04) == TARGET_OBSTACLE)
     {
-      debugLog("ABORT_DRIVE pre_drive_wall d05=%s d04=%s\r\n", debugF1(chk05), debugF1(chk04));
-      int16_t totalSpin = (int16_t)(coarseCmd + fineSpinDeg);
-      if (totalSpin != 0)
-        spinAndTrackPose((int16_t)(-totalSpin));
+      if (chk05 > AGV_WALL_CONFIRM_DIST_CM && chk05 <= SCAN_MAX_RANGE_CM)
+      {
+        int16_t inspCm = computeInspectDriveCm(chk05);
+        debugLog("PRE_DRV_INSPECT d=%s drive=%dcm\r\n", debugF1(chk05), inspCm);
+        drivePidAndTrackPose(inspCm);
+        setEncoderIrq(false);
+        measureDualDistanceMedianCM(&chk05, &chk04);
+        setEncoderIrq(true);
+        if (scanClassifyTarget(chk05, chk04) == TARGET_OBSTACLE)
+        {
+          debugLog("ABORT_DRIVE pre_drive_wall d05=%s d04=%s\r\n", debugF1(chk05), debugF1(chk04));
+          handleWall(chk05);
+          return false;
+        }
+        if (chk05 < 0.0f || chk05 > SCAN_MAX_RANGE_CM)
+        {
+          debugLog("ABORT_DRIVE pre_drive_lost d05=%s d04=%s\r\n", debugF1(chk05), debugF1(chk04));
+          return false;
+        }
+        fineDist = chk05;
+      }
       else
-        handleWall(chk05);
-      return false;
+      {
+        debugLog("ABORT_DRIVE pre_drive_wall d05=%s d04=%s\r\n", debugF1(chk05), debugF1(chk04));
+        int16_t totalSpin = (int16_t)(coarseCmd + fineSpinDeg);
+        if (totalSpin != 0)
+          spinAndTrackPose((int16_t)(-totalSpin));
+        else
+          handleWall(chk05);
+        return false;
+      }
     }
   }
   debugAlign(coarseCmd, fineAngle, fineSpinDeg, fineDist, fineFound);
   objectCenter = computeObjectCenter(SCAN_HOME_ANGLE, fineDist);
 
-  // Tiến tới tọa độ tâm vật bằng PID + 2 encoder; kiểm tra lại khoảng cách & cập nhật vị trí nếu cần đi tiếp
+  // Tiến tới tọa độ tâm vật bằng PID + 2 encoder; luôn chốt cự ly trước mũi trong tầm hạ càng gắp
   float stopOffsetCm = SERVO_PIVOT_OFFSET_CM + SENSOR_FACE_OFFSET_CM + OBJ_CENTER_OFFSET_CM + PID_DIST_TARGET_CM;
   uint32_t driveStartMs = HAL_GetTick();
   float lastD05 = fineDist;
   float lastD04 = ECHO_ERROR_TIMEOUT;
+  if (isInGrabRange(lastD05))
+  {
+    debugDriveEnd(HAL_GetTick() - driveStartMs, lastD05, lastD04, 0u, "DRV_DONE");
+    return true;
+  }
+
   for (uint8_t step = 0u; step < AGV_APPROACH_MAX_STEPS; step++)
   {
     dx = objectCenter.xCm - robotPose.xCm;
     dy = objectCenter.yCm - robotPose.yCm;
     float distToCenterCm = sqrtf(dx * dx + dy * dy);
-    int16_t driveCm = (int16_t)lroundf(distToCenterCm - stopOffsetCm);
+    int16_t driveCm = 0;
+    if (lastD05 == ECHO_ERROR_TOO_CLOSE)
+    {
+      driveCm = (int16_t)(-AGV_GRAB_BACKUP_CM);
+    }
+    else if (lastD05 >= 0.0f && lastD05 < AGV_GRAB_DIST_MIN_CM)
+    {
+      driveCm = (int16_t)lroundf(lastD05 - PID_DIST_TARGET_CM);
+      if (driveCm > -2)
+        driveCm = -2;
+    }
+    else
+    {
+      driveCm = (int16_t)lroundf(distToCenterCm - stopOffsetCm);
+      if (lastD05 > AGV_GRAB_DIST_MAX_CM && driveCm < 2)
+        driveCm = 2;
+    }
 
     debugLog("OBJ_TARGET step=%u obj=(%s,%s) pos=(%s,%s,%s) dist_center=%s drive=%dcm\r\n",
              step + 1u, debugF1(objectCenter.xCm), debugF1(objectCenter.yCm),
              debugF1(robotPose.xCm), debugF1(robotPose.yCm), debugF1(robotPose.thetaDeg),
              debugF1(distToCenterCm), driveCm);
-
-    if (driveCm <= 0)
-    {
-      debugDriveEnd(HAL_GetTick() - driveStartMs, lastD05, lastD04, 0u, "DRV_DONE");
-      return true;
-    }
 
     drivePidAndTrackPose(driveCm);
 
@@ -334,23 +431,28 @@ static bool goToDetectedObject(float distanceCm, uint8_t angleDeg)
              debugF1(robotPose.xCm), debugF1(robotPose.yCm), debugF1(robotPose.thetaDeg),
              debugF1(d05), debugF1(d04));
 
-    bool wallAtEnd = (scanClassifyTarget(d05, d04) == TARGET_OBSTACLE) ||
-                     (d05 >= 0.0f && d05 <= (PID_DIST_TARGET_CM + AGV_ARRIVE_TOLERANCE_CM) &&
-                      d04 >= 0.0f && d04 <= (PID_DIST_TARGET_CM + AGV_ARRIVE_TOLERANCE_CM +
-                                             SENSOR_DEPTH_OFFSET_CM + SCAN_OBSTACLE_TOLERANCE_CM)) ||
-                     (d05 == ECHO_ERROR_TIMEOUT &&
-                      (d04 <= SCAN_CLOSE_WALL_SRF04_CM || d04 < 0.0f));
-    if (wallAtEnd)
+    if (isCloseWallSample(d05, d04))
     {
       debugDriveEnd(HAL_GetTick() - driveStartMs, d05, d04, PID_LOST_MAX, "DRV_WALL");
       handleWall(d05);
       return false;
     }
+    if (scanClassifyTarget(d05, d04) == TARGET_OBSTACLE)
+    {
+      debugDriveEnd(HAL_GetTick() - driveStartMs, d05, d04, PID_LOST_MAX, "DRV_WALL_FAR");
+      return false;
+    }
 
-    if (d05 == ECHO_ERROR_TOO_CLOSE || (d05 >= 0.0f && d05 <= (PID_DIST_TARGET_CM + AGV_ARRIVE_TOLERANCE_CM)))
+    if (isInGrabRange(d05))
     {
       debugDriveEnd(HAL_GetTick() - driveStartMs, d05, d04, 0u, "DRV_DONE");
       return true;
+    }
+
+    if (d05 == ECHO_ERROR_TOO_CLOSE || (d05 >= 0.0f && d05 < AGV_GRAB_DIST_MIN_CM))
+    {
+      debugLog("DRV_TOO_CLOSE step=%u d05=%s -> backup\r\n", step + 1u, debugF1(d05));
+      continue;
     }
 
     if (scanClassifyTarget(d05, d04) != TARGET_OBJECT)
@@ -366,25 +468,31 @@ static bool goToDetectedObject(float distanceCm, uint8_t angleDeg)
     }
 
     objectCenter = computeObjectCenter(SCAN_HOME_ANGLE, d05);
-    lastD05 = d05;
-    lastD04 = d04;
   }
-  debugDriveEnd(HAL_GetTick() - driveStartMs, lastD05, lastD04, 0u, "DRV_DONE");
-  return true;
+  debugDriveEnd(HAL_GetTick() - driveStartMs, lastD05, lastD04, PID_LOST_MAX, "DRV_RANGE");
+  return false;
 }
 
 void agvInit(void)
 {
   delayInit();
   debugInit();
+  blackboxInit();
+  blackboxDumpToUart();
+  blackboxServiceBootCmd(BLACKBOX_BOOT_WAIT_MS);
   imuInit();
   motionInit();
   scanInit();
+  servoStop();
+  grabberInit();
   agvState = AGV_STATE_INIT_CALIB;
   corridorSteps = 0u;
+  inspectSteps = 0u;
+  expandSpinCount = 0u;
   prevExpandSpin = 0;
   justEscapedWall = false;
   wallEscapeCount = 0u;
+  hadCompleteLog = false;
   robotPose.xCm = 0.0f;
   robotPose.yCm = 0.0f;
   robotPose.thetaDeg = 0.0f;
@@ -393,6 +501,8 @@ void agvInit(void)
 
 void agvRun(void)
 {
+  blackboxPollUartCmd();
+
   float distanceCm = 0.0f;
   uint8_t angleDeg = SCAN_HOME_ANGLE;
 
@@ -408,6 +518,8 @@ void agvRun(void)
     robotPose.xCm = 0.0f;
     robotPose.yCm = 0.0f;
     robotPose.thetaDeg = 0.0f;
+    hadCompleteLog = blackboxHasCompleteLog();
+    blackboxStartCapture();
     agvState = AGV_STATE_SCAN;
     break;
 
@@ -419,27 +531,98 @@ void agvRun(void)
     if (status == SCAN_OBJECT_FOUND)
     {
       corridorSteps = 0u;
+      inspectSteps = 0u;
+      expandSpinCount = 0u;
       prevExpandSpin = 0;
       justEscapedWall = false;
       wallEscapeCount = 0u;
       if (goToDetectedObject(distanceCm, angleDeg))
       {
-        debugLog("ARRIVED obj=(%s,%s) final_pos=(%s,%s,%s)\r\n",
-                 debugF1(objectCenter.xCm), debugF1(objectCenter.yCm),
-                 debugF1(robotPose.xCm), debugF1(robotPose.yCm), debugF1(robotPose.thetaDeg));
-        agvState = AGV_STATE_ARRIVED;
+        // Ngắt hẳn động cơ, servo quét và ngắt ngoài encoder để tay gắp hoạt động độc lập
+        motorStopAll();
+        moveServoSmooth(SCAN_HOME_ANGLE);
+        HAL_Delay(SCAN_SETTLE_MS);
+        servoStop();
+        setEncoderIrq(false);
+        grabberPick();
+        setEncoderIrq(true);
+
+        // Quét lại ngay trước mũi để xác nhận vật đã thật sự rời khỏi sàn
+        float chkDistCm = 0.0f;
+        uint8_t chkAngleDeg = SCAN_HOME_ANGLE;
+        setEncoderIrq(false);
+        ScanStatus pickChkSt = scanForObject(&chkDistCm, &chkAngleDeg);
+        setEncoderIrq(true);
+        moveServoSmooth(SCAN_HOME_ANGLE);
+        HAL_Delay(SCAN_SETTLE_MS);
+        servoStop();
+
+        bool stillAtSpot = (pickChkSt == SCAN_OBJECT_FOUND) &&
+                           (chkDistCm <= (AGV_GRAB_DIST_MAX_CM + GRABBER_VERIFY_DIST_TOL_CM));
+        bool pickOk = !stillAtSpot;
+        debugLog("AGV_PICK result=%s chk_st=%d chk_ang=%u chk_d=%s\r\n",
+                 pickOk ? "PICK_OK" : "PICK_FAIL",
+                 (int)pickChkSt, chkAngleDeg, debugF1(chkDistCm));
+
+        if (pickOk)
+        {
+          debugLog("ARRIVED obj=(%s,%s) final_pos=(%s,%s,%s)\r\n",
+                   debugF1(objectCenter.xCm), debugF1(objectCenter.yCm),
+                   debugF1(robotPose.xCm), debugF1(robotPose.yCm), debugF1(robotPose.thetaDeg));
+          debugState("STOP", "ARRIVED");
+          blackboxFlushComplete();
+          blackboxStopCapture();
+          agvState = AGV_STATE_ARRIVED;
+        }
+        else
+        {
+          motorStopAll();
+          servoStop();
+          setEncoderIrq(false);
+          grabberMoveGripSmooth(GRABBER_GRIP_OPEN_DEG);
+          HAL_Delay(GRABBER_ACTION_SETTLE_MS);
+          grabberStopAll();
+          setEncoderIrq(true);
+          if (!hadCompleteLog)
+            blackboxFlush();
+        }
+      }
+      else if (!hadCompleteLog)
+      {
+        blackboxFlush();
       }
     }
     else if (status == SCAN_WALL_FOUND)
     {
       corridorSteps = 0u;
       prevExpandSpin = 0;
+      expandSpinCount = 0u;
       justEscapedWall = false;
-      wallEscapeCount++;
-      handleWall(distanceCm);
+      if (distanceCm > AGV_WALL_CONFIRM_DIST_CM &&
+          distanceCm <= SCAN_MAX_RANGE_CM &&
+          inspectSteps < AGV_MAX_INSPECT_STEPS)
+      {
+        // Vật/tường ở xa > 24 cm dễ gây loe tia SRF04: tiến tới ~20 cm rồi quét lại chốt quyết định
+        inspectSteps++;
+        wallEscapeCount = 0u;
+        int16_t stepCm = computeInspectDriveCm(distanceCm);
+        debugLog("WALL_INSPECT step=%u d=%s drive=%dcm\r\n", inspectSteps, debugF1(distanceCm), stepCm);
+        drivePidAndTrackPose(stepCm);
+        if (!hadCompleteLog)
+          blackboxFlush();
+      }
+      else
+      {
+        inspectSteps = 0u;
+        wallEscapeCount++;
+        handleWall(distanceCm);
+        if (!hadCompleteLog && distanceCm != ECHO_ERROR_TOO_CLOSE)
+          blackboxFlush();
+      }
     }
     else
     {
+      inspectSteps = 0u;
       bool frontClear = false;
       bool leftWall = false;
       bool rightWall = false;
@@ -448,6 +631,7 @@ void agvRun(void)
       {
         corridorSteps++;
         prevExpandSpin = 0;
+        expandSpinCount = 0u;
         wallEscapeCount = 0u;
         debugLog("SCAN_ADVANCE step=%u dist=%dcm\r\n", corridorSteps, AGV_CORRIDOR_STEP_CM);
         drivePidAndTrackPose(AGV_CORRIDOR_STEP_CM);
@@ -457,13 +641,23 @@ void agvRun(void)
         justEscapedWall = false;
         prevExpandSpin = 0;
         corridorSteps = 0u;
+        expandSpinCount = 0u;
         wallEscapeCount = 0u;
         debugLog("SCAN_FLIP_BACK spin=%d deg\r\n", WALL_TURN_BACK_DEG);
         spinAndTrackPose(WALL_TURN_BACK_DEG);
       }
+      else if (frontClear && expandSpinCount >= AGV_MAX_EXPAND_SPINS)
+      {
+        expandSpinCount = 0u;
+        prevExpandSpin = 0;
+        wallEscapeCount = 0u;
+        debugLog("SCAN_ADVANCE_OPEN dist=%dcm\r\n", AGV_CORRIDOR_STEP_CM);
+        drivePidAndTrackPose(AGV_CORRIDOR_STEP_CM);
+      }
       else
       {
         wallEscapeCount = 0u;
+        expandSpinCount++;
         int16_t expandSpin = (prevExpandSpin != 0)
                                  ? prevExpandSpin
                                  : ((leftWall && !rightWall)
@@ -478,180 +672,10 @@ void agvRun(void)
   }
 
   case AGV_STATE_ARRIVED:
-    HAL_Delay(100u);
+    blackboxPollUartCmd();
+    HAL_Delay(20u);
     break;
   }
-}
-*/
-
-static bool agvArrived = false;
-static NavPose simplePose = {0.0f, 0.0f, 0.0f};
-
-static float simpleNormalizeDeg(float deg)
-{
-  while (deg > 180.0f) deg -= 360.0f;
-  while (deg <= -180.0f) deg += 360.0f;
-  return deg;
-}
-
-// Xoay theo góc toán học (+CCW quay trái, -CW quay phải) và cập nhật tọa độ hiện tại
-static void simpleSpinAndTrack(float deltaMathDeg)
-{
-  deltaMathDeg = simpleNormalizeDeg(deltaMathDeg);
-  if (fabsf(deltaMathDeg) <= NAV_ANGLE_TOLERANCE_DEG)
-    return;
-
-  int16_t spinCmd = (int16_t)lroundf(-deltaMathDeg);
-  if (spinCmd == 0)
-    return;
-
-  motionSpinAnglePid(spinCmd, PID_TARGET_SPIN_RPM);
-  if (imuIsReady())
-  {
-    simplePose.thetaDeg = imuGetHeadingDeg();
-  }
-  else
-  {
-    uint32_t avgPulses = (encoderGetPulses(MOTOR_LEFT) + encoderGetPulses(MOTOR_RIGHT)) / 2u;
-    float actualDeg = ((float)avgPulses * 360.0f) / (float)ENC_SPIN_360_PULSES;
-    simplePose.thetaDeg = simpleNormalizeDeg(simplePose.thetaDeg + ((spinCmd < 0) ? actualDeg : -actualDeg));
-  }
-  HAL_Delay(NAV_STEP_PAUSE_MS);
-}
-
-// Chạy thẳng (tiến > 0, lùi < 0) và cập nhật tọa độ (x, y, theta) từ encoder + IMU
-static void simpleDriveAndTrack(int16_t driveCm)
-{
-  if (driveCm == 0)
-    return;
-
-  float startTheta = simplePose.thetaDeg;
-  motionDriveDistancePid(driveCm, PID_TARGET_DRIVE_RPM);
-
-  uint32_t avgPulses = (encoderGetPulses(MOTOR_LEFT) + encoderGetPulses(MOTOR_RIGHT)) / 2u;
-  float actualDistCm = ((float)avgPulses * WHEEL_CIRCUMFERENCE_CM) / (float)ENC_PULSES_PER_REV;
-  float endTheta = imuIsReady() ? imuGetHeadingDeg() : startTheta;
-  float midTheta = simpleNormalizeDeg(startTheta + 0.5f * simpleNormalizeDeg(endTheta - startTheta));
-  float midRad = midTheta * (MATH_PI / 180.0f);
-  float sign = (driveCm > 0) ? 1.0f : -1.0f;
-
-  simplePose.xCm += sign * actualDistCm * cosf(midRad);
-  simplePose.yCm += sign * actualDistCm * sinf(midRad);
-  simplePose.thetaDeg = endTheta;
-  HAL_Delay(NAV_STEP_PAUSE_MS);
-}
-
-void agvInit(void)
-{
-  delayInit();
-  debugInit();
-  blackboxInit();
-  blackboxDumpToUart();
-  blackboxServiceBootCmd(BLACKBOX_BOOT_WAIT_MS);
-  imuInit();
-  motionInit();
-  scanInit();
-  agvArrived = false;
-  simplePose.xCm = 0.0f;
-  simplePose.yCm = 0.0f;
-  simplePose.thetaDeg = 0.0f;
-
-  debugState("CALIB", "IMU_CHK");
-  if (imuIsReady() || imuInit())
-    imuCalibrate();
-  debugState("STOP", imuIsReady() ? "IMU_OK" : "IMU_ERR");
-}
-
-void agvRun(void)
-{
-  if (agvArrived)
-  {
-    HAL_Delay(SCAN_PERIOD_MS);
-    return;
-  }
-
-  float avgDistCm = 0.0f;
-  uint8_t avgAngleDeg = SCAN_HOME_ANGLE;
-
-  // 1. Quét 1 lượt liên tục: gặp tường/trống thì bỏ qua quét tiếp, gặp vật thì quét hết vật rồi tính trung bình
-  setEncoderIrq(false);
-  ScanStatus status = scanSimpleForObject(&avgDistCm, &avgAngleDeg);
-  setEncoderIrq(true);
-  if (status != SCAN_OBJECT_FOUND)
-    return;
-
-  // Đưa servo quét về thẳng mũi và ngắt PWM trước khi chạy động cơ
-  moveServoSmooth(SCAN_HOME_ANGLE);
-  HAL_Delay(SCAN_SETTLE_MS);
-  servoStop();
-
-  // 2. Tính tọa độ tâm vật (objX, objY) và tọa độ dừng mục tiêu (goalX, goalY) từ điểm trung bình
-  float thetaRad = simplePose.thetaDeg * (MATH_PI / 180.0f);
-  float pivotX = simplePose.xCm + SERVO_PIVOT_OFFSET_CM * cosf(thetaRad);
-  float pivotY = simplePose.yCm + SERVO_PIVOT_OFFSET_CM * sinf(thetaRad);
-
-  float rayAngleDeg = simplePose.thetaDeg + ((float)avgAngleDeg - (float)SCAN_HOME_ANGLE);
-  float rayRad = rayAngleDeg * (MATH_PI / 180.0f);
-  float rayDistCm = SENSOR_FACE_OFFSET_CM + avgDistCm + OBJ_CENTER_OFFSET_CM;
-  float objX = pivotX + rayDistCm * cosf(rayRad);
-  float objY = pivotY + rayDistCm * sinf(rayRad);
-
-  float dx = objX - simplePose.xCm;
-  float dy = objY - simplePose.yCm;
-  float distToObjCm = sqrtf(dx * dx + dy * dy);
-  float headingToObj = atan2f(dy, dx) * (180.0f / MATH_PI);
-  float stopOffsetCm = SERVO_PIVOT_OFFSET_CM + SENSOR_FACE_OFFSET_CM + OBJ_CENTER_OFFSET_CM + PID_DIST_TARGET_CM;
-  float goalDistCm = (distToObjCm > stopOffsetCm) ? (distToObjCm - stopOffsetCm) : 0.0f;
-  float headingRad = headingToObj * (MATH_PI / 180.0f);
-  float goalX = simplePose.xCm + goalDistCm * cosf(headingRad);
-  float goalY = simplePose.yCm + goalDistCm * sinf(headingRad);
-
-  debugLog("SIMPLE_TARGET ang=%u d=%s obj=(%s,%s) goal=(%s,%s,%s)\r\n",
-           avgAngleDeg, debugF1(avgDistCm),
-           debugF1(objX), debugF1(objY),
-           debugF1(goalX), debugF1(goalY), debugF1(headingToObj));
-
-  // 3. Đi thẳng tới tọa độ mục tiêu đã tính (không quét lại lần 2)
-  simpleSpinAndTrack(headingToObj - simplePose.thetaDeg);
-  if (goalDistCm >= NAV_DIST_TOLERANCE_CM)
-    simpleDriveAndTrack((int16_t)lroundf(goalDistCm));
-
-  // 4. Khi tới nơi: so sánh tọa độ hiện tại với tọa độ đã tính và căn chỉnh vị trí + hướng
-  float errX = goalX - simplePose.xCm;
-  float errY = goalY - simplePose.yCm;
-  float errDistCm = sqrtf(errX * errX + errY * errY);
-
-  debugLog("SIMPLE_CHECK cur=(%s,%s,%s) goal=(%s,%s) err_d=%s\r\n",
-           debugF1(simplePose.xCm), debugF1(simplePose.yCm), debugF1(simplePose.thetaDeg),
-           debugF1(goalX), debugF1(goalY), debugF1(errDistCm));
-
-  if (errDistCm > NAV_DIST_TOLERANCE_CM)
-  {
-    float fixHeading = atan2f(errY, errX) * (180.0f / MATH_PI);
-    float fixTurn = simpleNormalizeDeg(fixHeading - simplePose.thetaDeg);
-    if (fabsf(fixTurn) > 90.0f)
-    {
-      // Nếu xe bị chạy lố qua đích: căn góc rồi lùi nhẹ thay vì quay đầu 180°
-      float backTurn = simpleNormalizeDeg(fixHeading + 180.0f - simplePose.thetaDeg);
-      simpleSpinAndTrack(backTurn);
-      simpleDriveAndTrack(-(int16_t)lroundf(errDistCm));
-    }
-    else
-    {
-      simpleSpinAndTrack(fixTurn);
-      simpleDriveAndTrack((int16_t)lroundf(errDistCm));
-    }
-  }
-
-  // Căn chỉnh hướng cuối hướng thẳng về tâm vật đã tính
-  float finalHeading = atan2f(objY - simplePose.yCm, objX - simplePose.xCm) * (180.0f / MATH_PI);
-  simpleSpinAndTrack(finalHeading - simplePose.thetaDeg);
-
-  debugLog("SIMPLE_ARRIVED cur=(%s,%s,%s) goal=(%s,%s) obj=(%s,%s)\r\n",
-           debugF1(simplePose.xCm), debugF1(simplePose.yCm), debugF1(simplePose.thetaDeg),
-           debugF1(goalX), debugF1(goalY), debugF1(objX), debugF1(objY));
-  debugState("STOP", "ARRIVED");
-  agvArrived = true;
 }
 
 void agvTestScanGrabInit(void)
@@ -680,7 +704,8 @@ void agvTestScanGrabRun(void)
 
   debugLog("TEST_SG_DETECT ang=%u d=%s\r\n", objAngleDeg, debugF1(objDistCm));
 
-  // Đưa đầu quét về thẳng mũi và ngắt PWM servo quét trước khi hạ tay gắp
+  // Đưa đầu quét về thẳng mũi, ngắt PWM servo quét và động cơ trước khi hạ tay gắp
+  motorStopAll();
   moveServoSmooth(SCAN_HOME_ANGLE);
   HAL_Delay(SCAN_SETTLE_MS);
   servoStop();
@@ -709,10 +734,10 @@ void agvTestScanGrabRun(void)
 
   if (!pickOk)
   {
-    // Gắp trượt: mở ngàm, ngắt PWM kẹp rồi quét lại ở chu kỳ sau
+    // Gắp trượt: mở ngàm, ngắt toàn bộ PWM tay gắp rồi quét lại ở chu kỳ sau
     grabberMoveGripSmooth(GRABBER_GRIP_OPEN_DEG);
     HAL_Delay(GRABBER_ACTION_SETTLE_MS);
-    grabberGripStop();
+    grabberStopAll();
     debugGrabber(grabberGetGripAngle(), grabberGetLiftAngle(), "SCAN_GRAB", "WAIT_OBJ");
     HAL_Delay(GRABBER_TEST_WAIT_MS);
     return;

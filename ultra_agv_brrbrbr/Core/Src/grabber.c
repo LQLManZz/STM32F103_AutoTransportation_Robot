@@ -27,15 +27,35 @@ static uint32_t angleToPulseUs(uint8_t angleDeg)
          ((uint32_t)angleDeg * (GRABBER_MAX_PULSE_US - GRABBER_MIN_PULSE_US)) / GRABBER_MAX_ANGLE_DEG;
 }
 
+// Ngắt PWM một kênh servo sau khi kết thúc cửa sổ xung HIGH để tránh giật biên
+static void stopServoChannelClean(TIM_HandleTypeDef *htim, uint32_t channel)
+{
+  if ((htim->Instance->CR1 & TIM_CR1_CEN) != 0u)
+  {
+    uint32_t startMs = HAL_GetTick();
+    while (__HAL_TIM_GET_COUNTER(htim) <= (uint32_t)(GRABBER_MAX_PULSE_US + 100u))
+    {
+      if ((HAL_GetTick() - startMs) >= 25u)
+        break;
+    }
+  }
+
+  __HAL_TIM_SET_COMPARE(htim, channel, 0u);
+  HAL_TIM_PWM_Stop(htim, channel);
+}
+
 void grabberInit(void)
 {
-  // Khởi động tuần tự từng servo để tránh đỉnh dòng; tắt PWM kẹp sau khi mở ngàm
-  grabberSetLiftAngle(GRABBER_LIFT_UP_DEG);
-  HAL_Delay(GRABBER_INIT_SETTLE_MS);
-  grabberSetGripAngle(GRABBER_GRIP_OPEN_DEG);
-  HAL_Delay(GRABBER_INIT_SETTLE_MS);
-  grabberGripStop();
-  debugGrabber(gripAngleDeg, liftAngleDeg, "GRAB_INIT", "READY");
+  // Giữ cả 2 servo tay gắp ở trạng thái tắt hoàn toàn cho tới khi thực sự gắp vật
+  gripAngleDeg = GRABBER_GRIP_OPEN_DEG;
+  liftAngleDeg = GRABBER_LIFT_UP_DEG;
+  gripPwmOn = false;
+  liftPwmOn = false;
+  __HAL_TIM_SET_COMPARE(&GRABBER_GRIP_TIM, GRABBER_GRIP_CHANNEL, 0u);
+  HAL_TIM_PWM_Stop(&GRABBER_GRIP_TIM, GRABBER_GRIP_CHANNEL);
+  __HAL_TIM_SET_COMPARE(&GRABBER_LIFT_TIM, GRABBER_LIFT_CHANNEL, 0u);
+  HAL_TIM_PWM_Stop(&GRABBER_LIFT_TIM, GRABBER_LIFT_CHANNEL);
+  debugGrabber(gripAngleDeg, liftAngleDeg, "GRAB_INIT", "OFF");
 }
 
 void grabberSetGripAngle(uint8_t angleDeg)
@@ -66,8 +86,22 @@ void grabberGripStop(void)
 {
   if (!gripPwmOn)
     return;
-  HAL_TIM_PWM_Stop(&GRABBER_GRIP_TIM, GRABBER_GRIP_CHANNEL);
+  stopServoChannelClean(&GRABBER_GRIP_TIM, GRABBER_GRIP_CHANNEL);
   gripPwmOn = false;
+}
+
+void grabberLiftStop(void)
+{
+  if (!liftPwmOn)
+    return;
+  stopServoChannelClean(&GRABBER_LIFT_TIM, GRABBER_LIFT_CHANNEL);
+  liftPwmOn = false;
+}
+
+void grabberStopAll(void)
+{
+  grabberGripStop();
+  grabberLiftStop();
 }
 
 void grabberMoveGripSmooth(uint8_t targetDeg)
@@ -122,6 +156,11 @@ uint8_t grabberGetLiftAngle(void)
 
 void grabberPick(void)
 {
+  // Bảo đảm ngàm mở sẵn rồi tắt ngay kẹp trước khi hạ cần
+  grabberSetGripAngle(GRABBER_GRIP_OPEN_DEG);
+  HAL_Delay(GRABBER_ACTION_SETTLE_MS);
+  grabberGripStop();
+
   debugGrabber(gripAngleDeg, liftAngleDeg, "GRAB_PICK", "LIFT_DOWN");
   grabberMoveLiftSmooth(GRABBER_LIFT_DOWN_DEG);
   HAL_Delay(GRABBER_ACTION_SETTLE_MS);
@@ -132,7 +171,11 @@ void grabberPick(void)
 
   debugGrabber(gripAngleDeg, liftAngleDeg, "GRAB_PICK", "LIFT_UP");
   grabberMoveLiftSmooth(GRABBER_LIFT_UP_DEG);
-  debugGrabber(gripAngleDeg, liftAngleDeg, "GRAB_PICK", "HOLDING");
+  HAL_Delay(GRABBER_ACTION_SETTLE_MS);
+
+  // Gắp xong cắt toàn bộ PWM tay gắp về trạng thái tắt
+  grabberStopAll();
+  debugGrabber(gripAngleDeg, liftAngleDeg, "GRAB_PICK", "DONE_OFF");
 }
 
 void grabberRelease(void)
@@ -148,6 +191,8 @@ void grabberRelease(void)
 
   debugGrabber(gripAngleDeg, liftAngleDeg, "GRAB_DROP", "LIFT_UP");
   grabberMoveLiftSmooth(GRABBER_LIFT_UP_DEG);
+  HAL_Delay(GRABBER_ACTION_SETTLE_MS);
+  grabberStopAll();
   debugGrabber(gripAngleDeg, liftAngleDeg, "GRAB_DROP", "RELEASED");
 }
 
