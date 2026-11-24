@@ -254,13 +254,6 @@ void debugWallTurn(bool leftHasWall, float leftDistCm, bool rightHasWall, float 
   lcdUpdate(dir, status);
 }
 
-void debugMotorTest(const char *step)
-{
-  uartPrintMotorTelemetry(step);
-  lcdSetHeading(imuGetHeadingDeg());
-  lcdUpdate(step, "MTR_TEST");
-}
-
 void debugMotorPwmTest(uint16_t duty, uint8_t percent, const char *status)
 {
   printf("TEST_PWM Duty=%4u (PWM=%2u%%) - %s\r\n", duty, percent, status);

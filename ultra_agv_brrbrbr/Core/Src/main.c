@@ -22,8 +22,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "agv.h"
-#include "motortest.h"
 #include "scanbench.h"
+#include "motorbench.h"
 
 /* USER CODE END Includes */
 
@@ -124,6 +124,7 @@ int main(void)
     /* USER CODE BEGIN 3 */
     agvRun();
     // scanBenchRun();
+    // motorBenchRun();
   }
   /* USER CODE END 3 */
 }

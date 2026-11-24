@@ -203,22 +203,15 @@
 #define WALL_TURN_BACK_DEG 180     // Góc quay đầu khi cả trái và phải đều có tường (độ)
 #define WALL_HOLD_MS 400u          // Thời gian giữ hiển thị trạng thái tường trên LCD (ms)
 
-// --- Kịch bản test động cơ & dò ngưỡng PWM ---
+// --- Bench test motor qua UART1 (motorbench) ---
 #define MOTOR_TEST_START_DELAY_MS 3000u // Chờ trước khi chạy để đặt xe xuống sàn (ms)
-#define MOTOR_TEST_PAUSE_MS 1500u       // Nghỉ giữa 2 động tác (ms)
-#define MOTOR_TEST_DRIVE_CM 30          // Cự ly tiến/lùi (cm)
-#define MOTOR_TEST_DRIVE_SPEED 40       // Tốc độ tiến/lùi (% PWM)
-
-#define PWM_TEST_MAX_DUTY 650u        // Duty bắt đầu (trần an toàn pin 12V cho motor TT, ARR = 999)
-#define PWM_TEST_HOLD_MAX_MS 2500u    // Thời gian giữ mức Max để bánh lấy trớn/đà (ms)
-#define PWM_TEST_STEP_DUTY 10u        // Bước giảm Duty mỗi lần (~1% PWM)
-#define PWM_TEST_STEP_MS 600u         // Thời gian giữ mỗi bước giảm để kịp quan sát (ms)
-#define PWM_TEST_CYCLE_PAUSE_MS 5000u  // Nghỉ giữa 2 chu kỳ test lặp lại (ms)
-#define PWM_TEST_DRIVE_LEFT_DUTY 147u  // Duty tiến thẳng bánh trái
-#define PWM_TEST_DRIVE_RIGHT_DUTY 169u // Duty tiến thẳng bánh phải
-#define PWM_TEST_SPIN_MIN_DUTY 350u    // Duty xoay tại chỗ thấp nhất (35%)
-#define PWM_TEST_KICK_DUTY 450u       // Xung mồi kickstart phá ma sát nghỉ (45%)
-#define PWM_TEST_KICK_MS 40u          // Thời gian xung mồi (ms)
+#define MOTOR_BENCH_LINE_MAX 32u          // Độ dài tối đa 1 dòng lệnh bench motor (ký tự)
+#define MOTOR_BENCH_RX_TIMEOUT_MS 100u    // Chờ tối đa mỗi byte lệnh (ms)
+#define MOTOR_BENCH_SETTLE_MS 700u        // Chờ bánh ổn định tốc độ sau mỗi lần đổi duty (ms)
+#define MOTOR_BENCH_RPM_SAMPLE_MS 20u     // Chu kỳ lấy mẫu RPM của ISR khi quét duty (ms)
+#define MOTOR_BENCH_BRAKE_SETTLE_MS 300u  // Chờ bánh dừng hẳn sau phanh trước khi đọc xung cuối (ms)
+#define MOTOR_BENCH_ENC_TIMEOUT_MS 15000u // Thời gian chạy tối đa lệnh đếm xung 1 bánh (ms)
+#define MOTOR_BENCH_STEP_PAUSE_MS 500u    // Nghỉ cho bánh dừng giữa 2 bước kiểm chiều quay (ms)
 
 // --- Encoder quang chữ U 20 lỗ (PB7 = EXTI7 bánh trái, PB6 = EXTI6 bánh phải) ---
 #define ENC_LEFT_PIN Encoder_L_Pin   // PB7 - ngắt ngoài xung encoder bánh trái
@@ -231,14 +224,14 @@
 #define ENC_SAMPLE_MS 100u           // Chu kỳ cập nhật tốc độ lên LCD và UART khi xe chạy (ms)
 #define WHEEL_DIAMETER_CM 7.0f       // Đường kính ngoài bánh xe đo thực tế (cm)
 #define WHEEL_CIRCUMFERENCE_CM (MATH_PI * WHEEL_DIAMETER_CM) // Chu vi bánh xe (~0.55 cm / sườn xung)
-#define ENC_SPIN_360_PULSES 83u      // Số sườn xung mỗi bánh để xoay 360° (track 14.5 cm / 7.0 cm * 40)
+#define ENC_SPIN_360_PULSES 105u     // Số sườn xung mỗi bánh để xoay 360° (đo trên sàn so IMU, 3 lần: 102..106; lý thuyết 83 sai vì bánh trượt khi xoay)
 
 #define PID_TARGET_DRIVE_RPM 55u     // Tốc độ chạy thẳng chậm, ổn định, hạn chế trượt bánh (vòng/phút)
 #define PID_TARGET_SPIN_RPM 24u      // Tốc độ xoay rất chậm, mượt sau xung mồi phá ma sát tĩnh (vòng/phút)
 #define PID_DECEL_DRIVE_RPM 32u      // Tốc độ giảm tốc chậm khi tới gần vật để dừng chính xác không lố (vòng/phút)
 #define PID_DECEL_SPIN_RPM 16u       // Tốc độ giảm tốc thật chậm ở vài độ cuối trước khi phanh (vòng/phút)
 #define PID_DECEL_DRIVE_PULSES 22u   // Số sườn xung cuối bắt đầu giảm tốc khi chạy thẳng (~12 cm trước đích)
-#define PID_DECEL_SPIN_PULSES 8u     // Số sườn xung cuối bắt đầu giảm tốc khi xoay (~35° cuối)
+#define PID_DECEL_SPIN_PULSES 8u     // Số sườn xung cuối bắt đầu giảm tốc khi xoay (~27° cuối với 105 sườn/360°)
 #define DRIVE_KICK_DUTY 390u         // Xung mồi nhẹ khi bắt đầu chạy thẳng để không giật lệch mũi (0 - 999)
 #define DRIVE_KICK_MS 25u            // Thời gian xung mồi chạy thẳng (ms)
 #define PID_REF_RPM 105u             // Tốc độ tham chiếu ứng với PID_BASE_LEFT_DUTY / PID_BASE_RIGHT_DUTY

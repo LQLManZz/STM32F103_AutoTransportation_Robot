@@ -39,9 +39,6 @@ void debugWallDetected(float d05RawCm, float d04RawCm);
 // Báo kết quả kiểm tra tường trái/phải và hướng quay quyết định
 void debugWallTurn(bool leftHasWall, float leftDistCm, bool rightHasWall, float rightDistCm, int16_t turnDeg);
 
-// Báo bước đang chạy của kịch bản test động cơ
-void debugMotorTest(const char *step);
-
 // Báo thông số khi test tìm ngưỡng PWM tối thiểu: duty (0-999), % PWM, trạng thái
 void debugMotorPwmTest(uint16_t duty, uint8_t percent, const char *status);
 
