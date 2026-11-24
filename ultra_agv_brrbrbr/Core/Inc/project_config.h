@@ -16,28 +16,25 @@
 #define ECHO_SRF04_PORT Echo_SRF04_GPIO_Port
 
 #define SENSOR_DEPTH_OFFSET_CM 7.0f          // Chênh lệch khoảng cách: SRF05 trên nằm lùi về phía sau 7 cm so với SRF05 dưới
-#define SCAN_OBSTACLE_TOLERANCE_CM 4.0f      // Dung sai độ lệch (sau khi bù 7 cm) để kết luận tường, chịu nhiễu siêu âm thực tế
+#define SCAN_OBSTACLE_TOLERANCE_CM 1.8f      // Chênh SRF05 trên (đã bù 7 cm) - SRF05 dưới <= ngưỡng này là tường (đo thật <= 30 cm: tường <= +0.9, rubik >= +2.6)
+#define SCAN_CLASSIFY_MAX_CM 30.0f           // Cự ly tối đa phân loại vật/tường tin cậy; xa hơn chỉ báo nghi ngờ để xe tiến lại soi (cm)
+#define SCAN_TOP_BLIND_MAX_CM 12.0f          // Đo thật: SRF05 trên không thấy rubik khi <= 10 cm, luôn thấy từ 15 cm; chỉ SRF05 dưới thấy mà xa hơn là mép vật cản (cm)
 #define SCAN_SEG_JUMP_CM 7.0f                // Ngưỡng nhảy d05 giữa 2 bước liên tiếp để tách đoạn bề mặt (cm)
-#define SCAN_CORE_DEPTH_MARGIN_CM 3.0f       // Biên độ từ điểm gần nhất trong cụm để tính tâm góc và cự ly lõi (cm)
-#define SCAN_WALL_MIN_SPAN_DEG 66u           // Bề rộng góc tối thiểu của mặt tường phẳng khi SRF05 trên mất sóng (độ)
-#define SCAN_WALL_OBS_MIN_HITS 4u            // Số điểm W tối thiểu trên đoạn dài (>= 10 điểm) để chốt tường từ SRF05 trên
-#define SCAN_WALL_RAMP_MIN_WIDTH_CM 8.0f     // Bề ngang 2D tối thiểu của tường nghiêng đơn điệu khi SRF05 trên trượt gương (cm)
-#define SCAN_WALL_RAMP_MIN_DELTA_CM 4.0f     // Độ chênh khoảng cách tối thiểu giữa 2 đầu đoạn tường nghiêng (cm)
-#define SCAN_WALL_RAMP_MONO_TOL_CM 2.5f      // Dung sai nhiễu cho phép khi kiểm tra dốc đơn điệu tường nghiêng (cm)
-#define SCAN_WALL_LINE_ERR_CM 4.0f           // Sai lệch đường thẳng 2D tối đa để kết luận mặt tường phẳng/nghiêng (cm)
-#define SCAN_WALL_BUMP_MIN_CM 2.2f           // Độ nhô về phía xe tối thiểu so với dây cung cục bộ để bắt vật sát tường (cm)
-#define SCAN_WALL_BUMP_HALF_STEPS 3u         // Nửa cửa sổ bước góc (±15° ở bước 5°) lấy 2 vai tường bắt vật sát tường
-#define SCAN_BUMP_MAX_SPAN_DEG 45u           // Bề rộng góc tối đa của cục lồi vật sát tường (độ)
-#define SCAN_OBJ_MAX_SPAN_DEG 63u            // Bề rộng góc tối đa của cụm vật độc lập (tính cả loe chùm siêu âm, độ)
-#define SCAN_WALL_WIDE_CHORD_CM 24.0f        // Bề ngang dây cung tối thiểu xác nhận mảng tường rộng thực sự (cm)
-#define SCAN_WALL_WIDE_SPAN_DEG 32u          // Bề rộng góc tối thiểu xác nhận mảng tường rộng thực sự (độ)
-#define SCAN_SUSPECT_MAX_CHORD_CM 20.0f      // Bề ngang tối đa của cụm nghi ngờ ở xa (>24 cm) bị SRF05 trên loe chùm (cm)
+#define SCAN_CORE_HALF_DEG 10u               // Nửa bề rộng góc lõi cụm dùng phân loại; mép chùm sóng cho chênh lệch 2 cảm biến sai (độ)
+#define SCAN_WALL_EVIDENCE_DEPTH_CM 2.0f     // Điểm trong cụm cách cự ly lõi <= ngưỡng này mà có dấu hiệu tường thì tính là bằng chứng tường (cm)
+#define SCAN_OTHER_MIN_SEP_DEG 30u           // Vùng gần nhất cục bộ khác cách giữa lõi > ngưỡng này mới xét làm bằng chứng tường gấp khúc (độ)
+#define SCAN_LOCAL_MIN_HALF_DEG 15u          // Nửa cửa sổ góc xác định điểm gần nhất cục bộ trong cụm (độ)
+#define SCAN_EDGE_MIN_TOL_CM 0.3f           // Điểm mép cung cách cự ly nhỏ nhất của cụm <= ngưỡng này coi là vật lấn ra ngoài cung quét (cm)
+#define SCAN_OBJ_RUN_MIN 3u                 // Số điểm liền kề tối thiểu có chênh lệch kiểu vật ổn định để tách vật dựa sát tường
+#define SCAN_OBJ_DIFF_MIN_CM 2.4f           // Chênh lệch tối thiểu kiểu vật trong dải soát (đo thật: rubik >= +2.4) (cm)
+#define SCAN_OBJ_DIFF_MAX_CM 6.0f           // Chênh lệch tối đa kiểu vật; lớn hơn là SRF05 trên thấy mặt cao phía sau (cm)
+#define SCAN_OBJ_RUN_SPREAD_CM 2.0f         // Dao động chênh lệch tối đa trong dải (mép tường dao động mạnh hơn) (cm)
+#define SCAN_CORE_DEPTH_MARGIN_CM 1.0f       // Biên độ từ điểm gần nhất trong cụm để lấy lõi tính tâm góc, cự ly và phân loại (cm)
 #define SCAN_MAX_WALL_SEGS_LOCAL 6u          // Số đoạn tường cục bộ tối đa trích xuất trong 1 lượt quét
-#define SCAN_BUMP_VERIFY_TOL_CM 4.0f         // Sai lệch d05 tối đa khi xác minh tâm vật sát tường (cm)
 #define SCAN_CLOSE_WALL_SRF04_CM 30.0f       // Nếu d05 == -1 nhưng SRF05 trên <= ngưỡng này thì kết luận tường sát mũi (cm)
 #define SCAN_CLOSE_WALL_MIN_DEG 60u          // Góc bắt đầu cung phát hiện tường áp sát nguy hiểm (độ)
 #define SCAN_CLOSE_WALL_MAX_DEG 120u         // Góc kết thúc cung phát hiện tường áp sát nguy hiểm (độ)
-#define SCAN_FRONT_BLIND_WALL_HITS 3u        // Số điểm mù liên tục trước mũi (80°..100°) kích hoạt thoát kẹt tường
+#define SCAN_FRONT_BLIND_WALL_HITS 3u        // Số điểm SRF05 dưới mù (-1/-2) mà SRF05 trên thấy tường ở cung 60°..120° để kết luận tường áp sát
 
 #define SERVO_MIN_PULSE_US 600u      // Độ rộng xung ứng với 0° (us), tick timer = 1 us
 #define SERVO_MAX_PULSE_US 2400u     // Độ rộng xung ứng với 180° (us)
@@ -70,12 +67,8 @@
 #define SCAN_SAMPLE_SPREAD_CM 8.0f        // Ngưỡng chênh lệch tối đa để 2 mẫu được coi là đồng thuận (cm)
 #define SCAN_SAMPLE_TRIPLE_SPREAD_CM 12.0f // Ngưỡng biên độ tối đa trên cả 3 mẫu để lấy trung bình 3 mẫu (cm)
 #define SCAN_VERIFY_SAMPLES 5u          // Số mẫu đo xác minh liên tiếp tại góc tâm cụm ứng viên
-#define SCAN_VERIFY_MIN_HITS 4u         // Số mẫu TARGET_OBJECT hợp lệ tối thiểu (4/5) để chốt chắc chắn là vật
-#define SCAN_VERIFY_MAX_OBS_HITS 1u     // Cho phép tối đa 1/5 mẫu nhiễu dội tường khi đã đạt >= 4/5 mẫu vật + đối chứng 2 chiều
+#define SCAN_VERIFY_MIN_HITS 4u         // Số mẫu d05 hợp lệ tối thiểu (4/5) tại tâm cụm để chốt vật
 #define SCAN_VERIFY_DEPTH_TOL_CM 10.0f  // Sai lệch khoảng cách tối đa khi xác minh tại tâm cụm (cm)
-#define SCAN_WALL_MIN_DEG 80u           // Góc bắt đầu vùng thẳng trước mũi xe để xác nhận tường (độ)
-#define SCAN_WALL_MAX_DEG 100u          // Góc kết thúc vùng thẳng trước mũi xe để xác nhận tường (độ)
-#define SCAN_WALL_DEPTH_SPREAD_CM 12.0f // Ngưỡng nhất quán độ sâu các điểm tường thẳng trước mũi (cm)
 #define SCAN_SIDE_WALL_LEFT_MIN_DEG 108u  // Góc tối thiểu xác định tường bên trái để gợi ý hướng mở rộng (độ)
 #define SCAN_SIDE_WALL_RIGHT_MAX_DEG 72u  // Góc tối đa xác định tường bên phải để gợi ý hướng mở rộng (độ)
 #define SCAN_FRONT_CLEAR_MIN_DEG 75u      // Góc bắt đầu vùng kiểm tra thông thoáng phía trước mũi (độ)
@@ -90,6 +83,9 @@
 #define AGV_FINE_DEADBAND_DEG 2 // Sai lệch góc <= giá trị này coi như đã thẳng
 #define AGV_OBJ_LATERAL_TOL_CM 3.5f // Lệch ngang tối đa của tâm vật so với đường chạy thẳng để căn chuẩn vật nhỏ 3x3 cm (cm)
 #define SCAN_TEST_WAIT_SEC 20u  // Thời gian nghỉ dựng ngữ cảnh giữa các bài test scanner (giây)
+#define SCAN_BENCH_LINE_MAX 32u        // Độ dài tối đa 1 dòng lệnh bench nhận qua UART1 (ký tự)
+#define SCAN_BENCH_RX_TIMEOUT_MS 100u  // Chờ tối đa mỗi byte lệnh bench (ms)
+#define SCAN_BENCH_MAX_SAMPLES 100u    // Số mẫu tối đa mỗi góc trong 1 lệnh bench
 
 #define TRIGGER_RESET_US 10u        // Thời gian giữ Trigger mức LOW trước khi phát xung (us)
 #define TRIGGER_PULSE_US 15u        // Độ rộng xung Trigger >= 10 us (15 us để lái chắc cảm biến)
@@ -156,7 +152,7 @@
 
 // --- Tiếp cận vật bằng PID + 2 encoder & quy đổi tọa độ tâm vật ---
 #define SERVO_PIVOT_OFFSET_CM 6.5f // Khoảng cách từ tâm trục 2 bánh tới trục servo SG90 (cm)
-#define SENSOR_FACE_OFFSET_CM 3.5f // Khoảng cách từ trục servo tới mặt đầu dò SRF05 trên ngàm (cm)
+#define SENSOR_FACE_OFFSET_CM 6.0f // Khoảng cách từ trục servo tới mặt đầu dò SRF05 dưới (cm, đo thật)
 #define OBJ_CENTER_OFFSET_CM 1.0f  // Nửa bề dày vật cần gắp để tính tọa độ tâm vật (cm)
 #define PID_DIST_TARGET_CM 2.5f    // Cự ly dừng mong muốn trước mặt vật tính từ đầu dò (cm)
 #define PID_DIST_TOLERANCE_CM 0.5f // Dung sai dừng tường (cm)

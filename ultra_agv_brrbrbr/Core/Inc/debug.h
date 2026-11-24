@@ -64,4 +64,7 @@ void debugStepPreview(uint8_t stepIdx, uint8_t stepTotal, const char *nextAction
 // Báo góc 2 servo tay gắp và trạng thái thao tác lên Serial + LCD
 void debugGrabber(uint8_t gripDeg, uint8_t liftDeg, const char *action, const char *status);
 
+// Báo 1 mẫu đo thô của bài test bench scanner (tag RAW/SWP) lên Serial + LCD
+void debugBench(const char *tag, uint8_t sampleIdx, uint8_t angleDeg, float d05RawCm, float d04RawCm);
+
 #endif // DEBUG_H

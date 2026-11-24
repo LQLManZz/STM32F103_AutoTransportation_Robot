@@ -17,7 +17,7 @@ static const char *const lcdShortCodes[][2] = {
     {"FORWARD", "FWD"}, {"TRIM-L", "TR-L"}, {"TRIM-R", "TR-R"}, {"GRAB_PICK", "PICK"},
     {"GRAB_DROP", "DROP"}, {"OBJ_FOUND", "OBJ_FND"}, {"OBJ_NOTFND", "NO_OBJ"},
     {"DRV_WALL_FAR", "DRV_WFAR"}, {"RETURN", "RET"}, {"FINE_SKIP", "FINE_SKP"},
-    {"DELIVERED", "DELIVER"}, {"GRIP_CLOSE", "GRIP_CLS"}};
+    {"DELIVERED", "DELIVER"}, {"GRIP_CLOSE", "GRIP_CLS"}, {"BENCH", "BNCH"}};
 
 // 4 ô nội dung LCD 16x2:
 // dòng 0: [góc 4][vị trí vật 7] [quyết định 4]  vd " 90° 12/ 19 SCAN"
@@ -331,4 +331,13 @@ void debugGrabber(uint8_t gripDeg, uint8_t liftDeg, const char *action, const ch
   snprintf(lcdAngle, sizeof(lcdAngle), "%3u%c", gripDeg, LCD_DEGREE_CHAR);
   snprintf(lcdPos, sizeof(lcdPos), "%4u%c", liftDeg, LCD_DEGREE_CHAR);
   lcdUpdate(action, status);
+}
+
+void debugBench(const char *tag, uint8_t sampleIdx, uint8_t angleDeg, float d05RawCm, float d04RawCm)
+{
+  printf("%s i=%u ang=%u bot=%s bot_st=%s top=%s top_st=%s\r\n",
+         tag, sampleIdx, angleDeg, debugF1(d05RawCm), srf05GetStateStr(false),
+         debugF1(d04RawCm), srf05GetStateStr(true));
+  lcdSetScan(angleDeg, d05RawCm, d04RawCm);
+  lcdUpdate("BENCH", tag);
 }

@@ -15,7 +15,7 @@ typedef enum
 {
   TARGET_NONE = 0, // Không có vật trong tầm quét (OBJ_NOTFND)
   TARGET_OBJECT,   // Chỉ cảm biến dưới SRF05 thấy -> Vật cần gắp (OBJ_FOUND)
-  TARGET_OBSTACLE  // Cả 2 cảm biến cùng thấy -> Vật cản cao >= 11cm (OBSTACLE)
+  TARGET_OBSTACLE  // Cả 2 cảm biến cùng thấy cùng 1 mặt (chênh <= SCAN_OBSTACLE_TOLERANCE_CM) -> tường/vật cản cao (OBSTACLE)
 } ScanTargetType;
 
 typedef enum
@@ -65,8 +65,5 @@ void scanGetLastExtraInfo(ScanExtraInfo *outInfo);
 
 // Lấy danh sách đoạn tường cục bộ trích xuất từ lượt quét gần nhất
 uint8_t scanGetLastWallSegments(ScanWallSegLocal *outSegs, uint8_t maxSegs);
-
-// Quét 1 lượt liên tục (giữ nguyên phân loại tường ban đầu): thấy vật thì quét hết vật rồi dừng tính trung bình, không quét lại lần 2
-ScanStatus scanSimpleForObject(float *distanceCm, uint8_t *angleDeg);
 
 #endif // SCANNER_H

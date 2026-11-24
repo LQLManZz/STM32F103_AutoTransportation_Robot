@@ -23,6 +23,7 @@
 /* USER CODE BEGIN Includes */
 #include "agv.h"
 #include "motortest.h"
+#include "scanbench.h"
 
 /* USER CODE END Includes */
 
@@ -122,6 +123,7 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
     agvRun();
+    // scanBenchRun();
   }
   /* USER CODE END 3 */
 }

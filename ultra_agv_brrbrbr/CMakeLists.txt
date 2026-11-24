@@ -53,6 +53,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/grabber.c
     Core/Src/delay.c
     Core/Src/scanner.c
+    Core/Src/scanbench.c
     Core/Src/agv.c
     Core/Src/motortest.c
     Core/Src/motor.c
