@@ -27,7 +27,7 @@ void motorDriveContinuousLowestSpeed(void);
 // Chạy một lần kịch bản Turn - Drive - Turn qua danh sách tọa độ (x, y, z°)
 void motorTestWaypointsRun(void);
 
-// Kịch bản test chuẩn: tiến 1m, lùi 1m, xoay trái/phải 45°, 90°, 180° (có đếm ngược 3s trên OLED)
+// Kịch bản test chuẩn: tiến 1m, lùi 1m, xoay trái/phải 45°, 90°, 180° (có đếm ngược 3s trên LCD)
 void motorTestMotionSuiteRun(void);
 
 // Test PID xoay góc chuẩn (90, -90, 180, -180) và tổ hợp góc tùy ý (tổng về 0°)

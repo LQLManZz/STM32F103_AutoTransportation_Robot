@@ -110,12 +110,21 @@
 #define SENSOR_RETRY_DELAY_MS 30u                        // Nghỉ trước khi đo lại khi gặp lỗi STUCK_HI/NO_RISE (ms)
 #define SENSOR_MAX_RETRIES 1u                            // Số lần thử lại tối đa khi gặp lỗi phần cứng Echo
 
-// --- Màn hình OLED SSD1306 128x64 (I2C2: SCL = PB10, SDA = PB11) ---
-#define OLED_I2C_ADDR (0x3Cu << 1) // Địa chỉ 7 bit 0x3C, HAL cần dạng dịch trái 1 bit
-#define OLED_I2C_TIMEOUT_MS 15u    // Chờ tối đa mỗi lần gửi (ms), đủ ghi 1 dòng 400 kHz mà không treo vòng lặp
-#define OLED_WIDTH_PX 128u         // Chiều ngang màn hình OLED (px)
-#define OLED_LINES 4u              // Số dòng chữ (mỗi dòng cao 2 page)
-#define OLED_LINE_CHARS 21u        // Số ký tự mỗi dòng: 128 px / 6 px (rộng 1x, cao 2x)
+// --- Màn hình LCD 16x2 HD44780 + module I2C PCF8574 (I2C2: SCL = PB10, SDA = PB11) ---
+#define LCD_I2C_ADDR_TOP 0x27u        // Địa chỉ 7 bit cao nhất dòng PCF8574 (dò lùi 0x27..0x20)
+#define LCD_I2C_ADDR_A_TOP 0x3Fu      // Địa chỉ 7 bit cao nhất dòng PCF8574A (dò lùi 0x3F..0x38)
+#define LCD_I2C_ADDR_COUNT 8u         // Số địa chỉ mỗi dòng chip (3 cầu hàn A0..A2)
+#define LCD_I2C_TIMEOUT_MS 15u        // Chờ tối đa mỗi lần gửi (ms), đủ ghi 1 dòng mà không treo vòng lặp
+#define LCD_ROWS 2u                   // Số dòng
+#define LCD_COLS 16u                  // Số ô ký tự mỗi dòng
+#define LCD_POWER_UP_MS 150u          // Chờ HD44780 ổn định nguồn trước khi khởi tạo, đồng thời là lúc đèn nền chớp tắt (ms, >= 40)
+#define LCD_INIT_STEP_MS 5u           // Chờ giữa các nibble khởi tạo chế độ 4 bit (ms, >= 4.1)
+#define LCD_CLEAR_MS 2u               // Chờ lệnh xóa màn hình hoàn tất (ms, >= 1.52)
+#define LCD_ANGLE_CHARS 4u            // Ô góc đầu dòng 0: " 90°" góc servo hoặc " -45" heading IMU
+#define LCD_POS_CHARS 7u              // Ô vị trí vật dòng 0: cự ly SRF05 dưới/trên " 12/ 19" (cm)
+#define LCD_DECISION_CHARS 4u         // Ô quyết định cuối dòng 0 (SCAN, FWD, L90...)
+#define LCD_STATUS_CHARS 8u           // Ô trạng thái cuối dòng 1 (OBJ_FND, OBST_FND...)
+#define LCD_DEGREE_CHAR '\xDF'        // Ký tự ° trong ROM HD44780 (A00)
 
 // --- Động cơ (L298N, PWM TIM3 CH1 = ENA/PA6, CH2 = ENB/PA7) ---
 #define MOTOR_PORT_DIR GPIOA
@@ -196,7 +205,7 @@
 #define WALL_TURN_LEFT_DEG -90     // Góc quay trái tránh tường (độ)
 #define WALL_TURN_RIGHT_DEG 90     // Góc quay phải tránh tường (độ)
 #define WALL_TURN_BACK_DEG 180     // Góc quay đầu khi cả trái và phải đều có tường (độ)
-#define WALL_HOLD_MS 400u          // Thời gian giữ hiển thị trạng thái tường trên OLED (ms)
+#define WALL_HOLD_MS 400u          // Thời gian giữ hiển thị trạng thái tường trên LCD (ms)
 
 // --- Kịch bản test động cơ & dò ngưỡng PWM ---
 #define MOTOR_TEST_START_DELAY_MS 3000u // Chờ trước khi chạy để đặt xe xuống sàn (ms)
@@ -223,7 +232,7 @@
 #define ENC_PULSES_PER_REV (ENC_SLOTS_PER_REV * ENC_EDGES_PER_SLOT) // 40 sườn xung / vòng bánh
 #define ENC_DEBOUNCE_US 2000u        // Lọc nhiễu rung sườn xung quang học (2 ms, phù hợp 40 sườn/vòng)
 #define ENC_STOP_TIMEOUT_MS 250u     // Quá thời gian này không có xung thì coi như bánh dừng (ms)
-#define ENC_SAMPLE_MS 100u           // Chu kỳ cập nhật tốc độ lên OLED và UART khi xe chạy (ms)
+#define ENC_SAMPLE_MS 100u           // Chu kỳ cập nhật tốc độ lên LCD và UART khi xe chạy (ms)
 #define WHEEL_DIAMETER_CM 7.0f       // Đường kính ngoài bánh xe đo thực tế (cm)
 #define WHEEL_CIRCUMFERENCE_CM (MATH_PI * WHEEL_DIAMETER_CM) // Chu vi bánh xe (~0.55 cm / sườn xung)
 #define ENC_SPIN_360_PULSES 83u      // Số sườn xung mỗi bánh để xoay 360° (track 14.5 cm / 7.0 cm * 40)
@@ -255,7 +264,7 @@
 #define NAV_DIST_TOLERANCE_CM 1.0f   // Khoảng cách nhỏ hơn ngưỡng này coi như đã tại điểm (cm)
 #define NAV_ANGLE_TOLERANCE_DEG 3.0f // Sai lệch góc nhỏ hơn ngưỡng này thì bỏ qua bước xoay (độ)
 #define NAV_STEP_PAUSE_MS 400u       // Nghỉ ngắn sau khi phanh để xe đứng yên hẳn (ms)
-#define NAV_STEP_PREVIEW_MS 3000u    // Thời gian hiển thị trước hoạt động tiếp theo lên OLED (ms)
+#define NAV_STEP_PREVIEW_MS 3000u    // Thời gian hiển thị trước hoạt động tiếp theo lên LCD (ms)
 
 // --- IMU MPU6050 (I2C1 remap: SCL = PB8, SDA = PB9) ---
 #define IMU_SCL_PIN IMU_SCL_Pin        // PB8 - chân SCL I2C1 remap dùng cho IMU
@@ -290,7 +299,7 @@
 #define IMU_HEADING_KD 0.4f          // Hệ số D giảm dao động lắc ngang khi giữ thẳng (duty / (°/s))
 #define IMU_HEADING_MAX_ADJ 140.0f   // Giới hạn bù lái tối đa giữa 2 bánh khi giữ thẳng bằng IMU
 #define IMU_HEADING_INTEGRAL_MAX 50.0f // Giới hạn chống bão hòa tích phân giữ thẳng bằng IMU
-#define IMU_SPIN_QUIET_DEG 10.0f     // Ngưng vẽ OLED trong góc cuối này để giữ chu kỳ đọc IMU 5 ms (°)
+#define IMU_SPIN_QUIET_DEG 10.0f     // Ngưng ghi LCD trong góc cuối này để giữ chu kỳ đọc IMU 5 ms (°)
 #define IMU_TRIM_BRAKE_MS 60u        // Thời gian giữ phanh ngắn mạch sau mỗi lượt vi chỉnh góc (ms)
 #define IMU_TRIM_SETTLE_MS 80u       // Chờ xe ổn định sau mỗi lượt vi chỉnh góc (ms)
 
@@ -316,7 +325,7 @@
 #define GRABBER_TEST_WAIT_MS 3000u         // Thời gian chờ trước khi gắp trong chu kỳ test (ms)
 #define GRABBER_TEST_HOLD_MS 5000u         // Thời gian giữ vật trên không trong chu kỳ test (ms)
 #define GRABBER_VERIFY_DIST_TOL_CM 8.0f    // Sai lệch cự ly tối đa so với vị trí ban đầu để xác nhận vật còn/đã đặt lại (cm)
-#define GRABBER_VERIFY_HOLD_MS 1500u       // Thời gian giữ hiển thị kết quả xác minh gắp/nhả trên OLED (ms)
+#define GRABBER_VERIFY_HOLD_MS 1500u       // Thời gian giữ hiển thị kết quả xác minh gắp/nhả trên LCD (ms)
 
 // --- Quay về điểm xuất phát (destination) ---
 #define DEST_MAX_ACTIONS 48u               // Số bước hành động tối đa lưu trong ngăn xếp lịch sử quay về

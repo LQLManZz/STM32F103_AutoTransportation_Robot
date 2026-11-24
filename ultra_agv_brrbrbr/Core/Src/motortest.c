@@ -122,7 +122,7 @@ void motorTestDirectSpin350(void)
 
 static void runContinuousLowest(MotorDir dirL, uint16_t dutyL, MotorDir dirR, uint16_t dutyR, const char *prefix)
 {
-  char label[OLED_LINE_CHARS + 1];
+  char label[LCD_COLS + 1];
   if (dutyL == dutyR)
     snprintf(label, sizeof(label), "%s %u", prefix, dutyL);
   else

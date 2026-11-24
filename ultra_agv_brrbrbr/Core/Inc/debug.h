@@ -5,7 +5,7 @@
 #include "scanner.h"
 #include <stdbool.h>
 
-// Khởi tạo màn hình OLED (serial dùng sẵn UART1)
+// Khởi tạo màn hình LCD 16x2 (serial dùng sẵn UART1)
 void debugInit(void);
 
 // Định dạng số thực 1 chữ số thập phân (không phụ thuộc cờ -u _printf_float)
@@ -14,7 +14,7 @@ const char *debugF1(float v);
 // Xuất một dòng log dạng TAG key=value ra UART1
 void debugLog(const char *format, ...);
 
-// Cập nhật dòng 1 quyết định hệ thống (FORWARD, BACKWARD, TURN-90R, SCANNING...) và dòng 3 RPM
+// Cập nhật ô quyết định hệ thống (FORWARD, BACKWARD, TURN-90R, SCANNING...) và RPM trên LCD
 void debugDecision(const char *decision);
 
 // Báo thông số thực tế mỗi lần đo khi quét thô
@@ -45,23 +45,23 @@ void debugMotorTest(const char *step);
 // Báo thông số khi test tìm ngưỡng PWM tối thiểu: duty (0-999), % PWM, trạng thái
 void debugMotorPwmTest(uint16_t duty, uint8_t percent, const char *status);
 
-// Cập nhật OLED theo đúng bố cục 4 dòng chuẩn: dòng 0 góc hướng IMU, dòng 1 quyết định, dòng 2 trạng thái, dòng 3 RPM
+// Cập nhật LCD: ô góc hiện heading IMU, kèm quyết định và trạng thái
 void debugState(const char *decision, const char *status);
 
 // Báo trạng thái điều hướng theo tọa độ Turn - Drive - Turn
 void debugNavWaypoint(uint8_t idx, uint8_t total, float curX, float curY, float curThetaDeg,
                       float targetX, float targetY, float targetThetaDeg, const char *phase);
 
-// Hiển thị đếm ngược hoạt động sắp thực hiện lên OLED trước khi xe chạy
+// Hiển thị đếm ngược hoạt động sắp thực hiện lên LCD trước khi xe chạy
 void debugNavPreview(uint8_t idx, uint8_t total, float curX, float curY, float curThetaDeg,
                      float targetX, float targetY, float targetThetaDeg,
                      const char *nextAction, uint8_t secLeft, bool imuReady);
 
-// Hiển thị đếm ngược bước tiếp theo của kịch bản test lên OLED
+// Hiển thị đếm ngược bước tiếp theo của kịch bản test lên LCD
 void debugStepPreview(uint8_t stepIdx, uint8_t stepTotal, const char *nextAction,
                       uint8_t secLeft, bool imuReady);
 
-// Báo góc 2 servo tay gắp và trạng thái thao tác lên Serial + OLED
+// Báo góc 2 servo tay gắp và trạng thái thao tác lên Serial + LCD
 void debugGrabber(uint8_t gripDeg, uint8_t liftDeg, const char *action, const char *status);
 
 #endif // DEBUG_H

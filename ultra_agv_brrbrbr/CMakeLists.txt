@@ -37,6 +37,9 @@ add_executable(${CMAKE_PROJECT_NAME})
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
 
+# Thư viện HAL CubeMX biên dịch -Os cho vừa Flash 56 KB, code dự án vẫn -Og để dễ debug
+target_compile_options(STM32_Drivers PRIVATE -Os)
+
 # Link directories setup
 target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined library search paths
@@ -58,7 +61,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/imu.c
     Core/Src/nav.c
     Core/Src/destination.c
-    Core/Src/oled.c
+    Core/Src/lcd.c
     Core/Src/debug.c
 )
 

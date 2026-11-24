@@ -85,7 +85,7 @@ void motionSpinAngle(int16_t angleDeg, uint8_t speedPercent)
   if (angleDeg == 0 || speedPercent == 0)
     return;
 
-  char decision[OLED_LINE_CHARS + 1];
+  char decision[LCD_COLS + 1];
   snprintf(decision, sizeof(decision), "TURN-%d%c", abs(angleDeg), (angleDeg > 0) ? 'R' : 'L');
 
   MotorDir dirL = (angleDeg > 0) ? MOTOR_FORWARD : MOTOR_BACKWARD;
@@ -419,7 +419,7 @@ static void runSpinImuLoop(int16_t angleDeg, uint16_t targetRpm, uint16_t decelR
       stepWheelPid(dirL, dirR, curTargetRpm, PID_SPIN_MIN_DUTY, integral, prevErr, NULL);
     }
 
-    // Tránh trễ I2C OLED ở góc cuối để vòng đọc IMU 5ms bắt điểm dừng chính xác nhất
+    // Tránh trễ I2C LCD ở góc cuối để vòng đọc IMU 5ms bắt điểm dừng chính xác nhất
     if ((targetAbsDeg - turnedAbs) > IMU_SPIN_QUIET_DEG && (nowMs - lastDebugMs) >= ENC_SAMPLE_MS)
     {
       lastDebugMs = nowMs;
@@ -487,7 +487,7 @@ void motionSpinAnglePid(int16_t angleDeg, uint16_t targetRpm)
   if (angleDeg == 0 || targetRpm == 0u)
     return;
 
-  char decision[OLED_LINE_CHARS + 1];
+  char decision[LCD_COLS + 1];
   snprintf(decision, sizeof(decision), "TURN-%d%c", abs(angleDeg), (angleDeg > 0) ? 'R' : 'L');
 
   uint16_t decelRpm = (PID_DECEL_SPIN_RPM < targetRpm) ? PID_DECEL_SPIN_RPM : targetRpm;
