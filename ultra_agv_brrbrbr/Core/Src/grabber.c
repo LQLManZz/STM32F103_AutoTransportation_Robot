@@ -46,15 +46,20 @@ static void stopServoChannelClean(TIM_HandleTypeDef *htim, uint32_t channel)
 
 void grabberInit(void)
 {
-  // Giữ cả 2 servo tay gắp ở trạng thái tắt hoàn toàn cho tới khi thực sự gắp vật
+  // Đưa tuần tự từng servo về vị trí chờ vật lý (mở ngàm -> nâng cần) rồi ngắt PWM tránh sụt áp
   gripAngleDeg = GRABBER_GRIP_OPEN_DEG;
   liftAngleDeg = GRABBER_LIFT_UP_DEG;
   gripPwmOn = false;
   liftPwmOn = false;
-  __HAL_TIM_SET_COMPARE(&GRABBER_GRIP_TIM, GRABBER_GRIP_CHANNEL, 0u);
-  HAL_TIM_PWM_Stop(&GRABBER_GRIP_TIM, GRABBER_GRIP_CHANNEL);
-  __HAL_TIM_SET_COMPARE(&GRABBER_LIFT_TIM, GRABBER_LIFT_CHANNEL, 0u);
-  HAL_TIM_PWM_Stop(&GRABBER_LIFT_TIM, GRABBER_LIFT_CHANNEL);
+  debugGrabber(gripAngleDeg, liftAngleDeg, "GRAB_INIT", "HOMING");
+
+  grabberSetGripAngle(GRABBER_GRIP_OPEN_DEG);
+  HAL_Delay(GRABBER_INIT_STEP_MS);
+  grabberGripStop();
+
+  grabberSetLiftAngle(GRABBER_LIFT_UP_DEG);
+  HAL_Delay(GRABBER_INIT_STEP_MS);
+  grabberLiftStop();
   debugGrabber(gripAngleDeg, liftAngleDeg, "GRAB_INIT", "OFF");
 }
 

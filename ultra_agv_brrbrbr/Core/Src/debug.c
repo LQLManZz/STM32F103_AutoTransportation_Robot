@@ -1,5 +1,4 @@
 #include "debug.h"
-#include "blackbox.h"
 #include "project_config.h"
 #include "encoder.h"
 #include "imu.h"
@@ -64,31 +63,8 @@ const char *debugF1(float v)
   return b;
 }
 
-static const char *targetTypeShortStr(ScanTargetType type)
-{
-  if (type == TARGET_OBJECT) return "O";
-  if (type == TARGET_OBSTACLE) return "W";
-  return "N";
-}
-
-// Tạm dừng capture trước printf dài trên UART rồi ghi dòng quét gọn vào blackbox
-static void blackboxLogScanCompact(char tag, uint8_t angleDeg, float d05RawCm, float d04RawCm,
-                                   bool inRange, ScanTargetType type)
-{
-  blackboxResumeCapture();
-  if (!inRange)
-    return;
-
-  char line[40];
-  snprintf(line, sizeof(line), "%c %u %s/%s %s\n",
-           tag, (unsigned)angleDeg, debugF1(d05RawCm), debugF1(d04RawCm),
-           targetTypeShortStr(type));
-  blackboxWriteStr(line);
-}
-
 int __io_putchar(int ch)
 {
-  blackboxPutChar((char)ch);
   HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, HAL_MAX_DELAY);
   return ch;
 }
@@ -122,16 +98,11 @@ void debugScan(float d05RawCm, float d04RawCm, uint8_t angleDeg, uint8_t hitCoun
   float d04AdjCm = d04InRange ? (d04RawCm - SENSOR_DEPTH_OFFSET_CM) : d04RawCm;
   float diffCm = (d05InRange && d04InRange) ? (d04AdjCm - d05RawCm) : 0.0f;
 
-  bool cap = blackboxIsCapturing();
-  if (cap)
-    blackboxStopCapture();
-  printf("SCAN ang=%3u SRF05_bot=%s(%s) SRF04_top=%s(%s) srf04_adj=%s diff=%s hit=%u/%u status=%s\r\n",
+  printf("SCAN ang=%3u SRF05_bot=%s(%s) SRF05_top=%s(%s) top_adj=%s diff=%s hit=%u/%u status=%s\r\n",
          angleDeg, debugF1(d05RawCm), srf05GetStateStr(false),
          debugF1(d04RawCm), srf05GetStateStr(true),
          debugF1(d04AdjCm), debugF1(diffCm),
          hitCount, SCAN_CONFIRM_COUNT, status);
-  if (cap)
-    blackboxLogScanCompact('S', angleDeg, d05RawCm, d04RawCm, d05InRange || d04InRange, type);
   oledUpdate(angleDeg, d05RawCm, d04RawCm, "SCANNING", status);
 }
 
@@ -139,19 +110,13 @@ void debugScanFine(uint8_t angleDeg, float d05RawCm, float d04RawCm, ScanTargetT
                    float bestDistCm, uint8_t bestAngleDeg)
 {
   const char *status = targetTypeToStr(type);
-  bool d05InRange = (d05RawCm >= SCAN_MIN_RANGE_CM && d05RawCm <= SRF05_MAX_RANGE_CM);
   bool d04InRange = (d04RawCm >= SCAN_MIN_RANGE_CM && d04RawCm <= SRF04_MAX_RANGE_CM);
   float d04AdjCm = d04InRange ? (d04RawCm - SENSOR_DEPTH_OFFSET_CM) : d04RawCm;
 
-  bool cap = blackboxIsCapturing();
-  if (cap)
-    blackboxStopCapture();
-  printf("FINE ang=%3u SRF05_bot=%s(%s) SRF04_top=%s(%s) srf04_adj=%s status=%s best_d=%s best_ang=%u\r\n",
+  printf("FINE ang=%3u SRF05_bot=%s(%s) SRF05_top=%s(%s) top_adj=%s status=%s best_d=%s best_ang=%u\r\n",
          angleDeg, debugF1(d05RawCm), srf05GetStateStr(false),
          debugF1(d04RawCm), srf05GetStateStr(true),
          debugF1(d04AdjCm), status, debugF1(bestDistCm), bestAngleDeg);
-  if (cap)
-    blackboxLogScanCompact('F', angleDeg, d05RawCm, d04RawCm, d05InRange || d04InRange, type);
   oledUpdate(angleDeg, d05RawCm, d04RawCm, "SCANNING", status);
 }
 
@@ -171,7 +136,7 @@ void debugApproach(uint32_t elapsedMs, float d05RawCm, float d04RawCm, float tar
   uint16_t rightRpm = encoderGetRpm(MOTOR_RIGHT);
   const char *status = wallMode ? "OBSTACLE_FND" : "OBJ_FOUND";
 
-  printf("%s t=%4lums SRF05_bot=%s SRF04_top=%s target=%s L=%urpm R=%urpm\r\n",
+  printf("%s t=%4lums SRF05_bot=%s SRF05_top=%s target=%s L=%urpm R=%urpm\r\n",
          wallMode ? "WALL_DRV" : "DRV", elapsedMs,
          debugF1(d05RawCm), debugF1(d04RawCm), debugF1(targetDistCm), leftRpm, rightRpm);
   oledUpdate(SCAN_HOME_ANGLE, d05RawCm, d04RawCm, "FORWARD", status);
@@ -179,14 +144,14 @@ void debugApproach(uint32_t elapsedMs, float d05RawCm, float d04RawCm, float tar
 
 void debugDriveEnd(uint32_t elapsedMs, float d05RawCm, float d04RawCm, uint8_t lostCount, const char *status)
 {
-  printf("DRV_END t=%4lums SRF05_bot=%s SRF04_top=%s lost=%u/%u status=%s\r\n",
+  printf("DRV_END t=%4lums SRF05_bot=%s SRF05_top=%s lost=%u/%u status=%s\r\n",
          elapsedMs, debugF1(d05RawCm), debugF1(d04RawCm), lostCount, PID_LOST_MAX, status);
   oledUpdate(SCAN_HOME_ANGLE, d05RawCm, d04RawCm, NULL, status);
 }
 
 void debugWallDetected(float d05RawCm, float d04RawCm)
 {
-  printf("WALL_DETECT SRF05_bot=%s SRF04_top=%s status=OBSTACLE_FND\r\n",
+  printf("WALL_DETECT SRF05_bot=%s SRF05_top=%s status=OBSTACLE_FND\r\n",
          debugF1(d05RawCm), debugF1(d04RawCm));
   oledUpdate(SCAN_HOME_ANGLE, d05RawCm, d04RawCm, "FORWARD", "OBSTACLE_FND");
 }

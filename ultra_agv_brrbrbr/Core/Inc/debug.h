@@ -11,7 +11,7 @@ void debugInit(void);
 // Định dạng số thực 1 chữ số thập phân (không phụ thuộc cờ -u _printf_float)
 const char *debugF1(float v);
 
-// Xuất một dòng log dạng TAG key=value ra UART1 (đồng thời ghi vào Blackbox)
+// Xuất một dòng log dạng TAG key=value ra UART1
 void debugLog(const char *format, ...);
 
 // Cập nhật dòng 1 quyết định hệ thống (FORWARD, BACKWARD, TURN-90R, SCANNING...) và dòng 3 RPM

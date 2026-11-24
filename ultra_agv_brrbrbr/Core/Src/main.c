@@ -121,13 +121,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    // agvTestScannerSuiteRun();
-    // motorTestPidSpinRun();
-    // motorTestPidDriveRun();
-    // motorTestPidSpinAngleRun(45);
-    // motorTestMotionSuiteRun();
     agvRun();
-    // agvTestScanGrabRun();
   }
   /* USER CODE END 3 */
 }

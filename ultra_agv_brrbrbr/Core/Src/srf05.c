@@ -231,7 +231,7 @@ static float measureSingleDistanceCM(GPIO_TypeDef *trigPort, uint16_t trigPin,
 }
 
 // Lọc đồng thuận 2/3 từ 3 mẫu đo; tách riêng lỗi phần cứng, ngoài tầm và nhiễu tán loạn
-static float filterTriplet(const float raw[SCAN_MEDIAN_SAMPLES], float maxRangeCm, bool isSrf04,
+static float filterTriplet(const float raw[SCAN_MEDIAN_SAMPLES], float maxRangeCm, bool isTopSensor,
                            EchoStatus lastErrStatus, EchoStatus *outStatus)
 {
   uint8_t timeoutCount = 0u;
@@ -313,9 +313,9 @@ static float filterTriplet(const float raw[SCAN_MEDIAN_SAMPLES], float maxRangeC
       return (validVals[0] + validVals[1]) * 0.5f;
     }
 
-    // Các mẫu hợp lệ phân tán quá rộng: SRF04 fail-safe lỗi phần cứng để không tạo vật giả
-    if (outStatus) *outStatus = isSrf04 ? ECHO_NO_RISE : ECHO_OUT_RANGE;
-    return isSrf04 ? ECHO_ERROR_TIMEOUT : ECHO_OUT_OF_RANGE_CM;
+    // Các mẫu hợp lệ phân tán quá rộng: cảm biến trên fail-safe timeout để không tạo vật giả
+    if (outStatus) *outStatus = isTopSensor ? ECHO_NO_RISE : ECHO_OUT_RANGE;
+    return isTopSensor ? ECHO_ERROR_TIMEOUT : ECHO_OUT_OF_RANGE_CM;
   }
 
   // Trường hợp hòa 1-1-1: chỉ giữ khi có 1 mẫu quá gần + 1 mẫu hợp lệ sát biên dưới
@@ -326,8 +326,8 @@ static float filterTriplet(const float raw[SCAN_MEDIAN_SAMPLES], float maxRangeC
     return validVals[0];
   }
 
-  if (outStatus) *outStatus = isSrf04 ? ECHO_NO_RISE : ECHO_OUT_RANGE;
-  return isSrf04 ? ECHO_ERROR_TIMEOUT : ECHO_OUT_OF_RANGE_CM;
+  if (outStatus) *outStatus = isTopSensor ? ECHO_NO_RISE : ECHO_OUT_RANGE;
+  return isTopSensor ? ECHO_ERROR_TIMEOUT : ECHO_OUT_OF_RANGE_CM;
 }
 
 void measureDualDistanceCM(float *dist05Cm, float *dist04Cm)
@@ -378,9 +378,9 @@ void measureDualDistanceMedianCM(float *dist05Cm, float *dist04Cm)
   measureDualDistanceConfirmCM(firstD05, firstD04, dist05Cm, dist04Cm);
 }
 
-const char *srf05GetStateStr(bool isSrf04)
+const char *srf05GetStateStr(bool isTopSensor)
 {
-  EchoStatus st = isSrf04 ? lastStatus04 : lastStatus05;
+  EchoStatus st = isTopSensor ? lastStatus04 : lastStatus05;
   if (st == ECHO_OK) return "OK";
   if (st == ECHO_OUT_RANGE) return "OUT_RNG";
   if (st == ECHO_STUCK_HI) return "STUCK_HI";

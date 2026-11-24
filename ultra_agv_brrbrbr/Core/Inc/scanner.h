@@ -25,10 +25,27 @@ typedef enum
   SCAN_SIDE_RIGHT     // Chỉ quét nửa phải từ chính diện sang phải (90°..45°), dùng khi tường ở bên trái
 } ScanSide;
 
+typedef struct
+{
+  uint8_t startDeg;
+  uint8_t endDeg;
+  float startDistCm;
+  float endDistCm;
+} ScanWallSegLocal;
+
+typedef struct
+{
+  bool isConfirmedWideWall;
+  bool isWallBump;
+  bool hasSuspect;
+  uint8_t suspectAngleDeg;
+  float suspectDistCm;
+} ScanExtraInfo;
+
 // Bật PWM servo và đưa servo về HOME
 void scanInit(void);
 
-// Phân loại mục tiêu từ khoảng cách thực tế của SRF05 (dưới) và SRF04 (trên, lùi 7cm)
+// Phân loại mục tiêu từ khoảng cách thực tế của SRF05 dưới và SRF05 trên (lùi 7cm)
 ScanTargetType scanClassifyTarget(float d05RawCm, float d04RawCm);
 
 // Quét toàn cung từ trái sang phải (135°..45°), lọc mép tường và xác minh cụm vật gần nhất
@@ -42,6 +59,12 @@ ScanStatus scanFine(float *distanceCm, uint8_t *angleDeg);
 
 // Lấy gợi ý không gian từ lần quét toàn cung gần nhất (phía trước thoáng, có tường trái/phải)
 void scanGetLastCorridorHint(bool *frontClear, bool *leftWall, bool *rightWall);
+
+// Lấy thông tin phân loại mở rộng (tường rộng, vật sát tường, cụm nghi ngờ xa) của lượt quét gần nhất
+void scanGetLastExtraInfo(ScanExtraInfo *outInfo);
+
+// Lấy danh sách đoạn tường cục bộ trích xuất từ lượt quét gần nhất
+uint8_t scanGetLastWallSegments(ScanWallSegLocal *outSegs, uint8_t maxSegs);
 
 // Quét 1 lượt liên tục (giữ nguyên phân loại tường ban đầu): thấy vật thì quét hết vật rồi dừng tính trung bình, không quét lại lần 2
 ScanStatus scanSimpleForObject(float *distanceCm, uint8_t *angleDeg);

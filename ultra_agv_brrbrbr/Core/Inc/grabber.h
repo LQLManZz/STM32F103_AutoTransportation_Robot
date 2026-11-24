@@ -3,7 +3,7 @@
 
 #include "stm32f1xx_hal.h"
 
-// Khởi tạo trạng thái logic 2 servo tay gắp ở vị trí chờ nhưng luôn ngắt PWM cho tới khi cần gắp
+// Đưa tuần tự 2 servo tay gắp về vị trí chờ vật lý (mở ngàm -> nâng cần) rồi ngắt PWM cho tới khi cần gắp
 void grabberInit(void);
 
 // Đặt trực tiếp góc servo kẹp (0°..180°)

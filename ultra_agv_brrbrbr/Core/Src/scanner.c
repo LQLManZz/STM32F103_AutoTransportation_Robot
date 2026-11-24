@@ -31,6 +31,31 @@ static bool curLeftWallHint = false;
 static bool curRightWallHint = false;
 static bool curWideFrontWall = false;
 static float curWideWallD05 = 0.0f;
+static bool curScanFineMode = false;
+static ScanExtraInfo lastExtra = {false, false, false, SCAN_HOME_ANGLE, 0.0f};
+static ScanWallSegLocal lastWallSegs[SCAN_MAX_WALL_SEGS_LOCAL];
+static uint8_t lastWallSegCount = 0u;
+
+static void addLocalWallSeg(uint8_t startDeg, uint8_t endDeg, float startDistCm, float endDistCm)
+{
+  if (lastWallSegCount >= SCAN_MAX_WALL_SEGS_LOCAL)
+    return;
+  lastWallSegs[lastWallSegCount].startDeg = startDeg;
+  lastWallSegs[lastWallSegCount].endDeg = endDeg;
+  lastWallSegs[lastWallSegCount].startDistCm = startDistCm;
+  lastWallSegs[lastWallSegCount].endDistCm = endDistCm;
+  lastWallSegCount++;
+}
+
+static void resetLastExtra(void)
+{
+  lastExtra.isConfirmedWideWall = false;
+  lastExtra.isWallBump = false;
+  lastExtra.hasSuspect = false;
+  lastExtra.suspectAngleDeg = SCAN_HOME_ANGLE;
+  lastExtra.suspectDistCm = 0.0f;
+  lastWallSegCount = 0u;
+}
 
 static bool isValidD05(float d)
 {
@@ -45,8 +70,10 @@ ScanTargetType scanClassifyTarget(float d05RawCm, float d04RawCm)
 
   if (d04RawCm >= SCAN_MIN_RANGE_CM && d04RawCm <= SRF04_MAX_RANGE_CM)
   {
-    if (d05RawCm == ECHO_ERROR_TOO_CLOSE ||
-        (d05RawCm > 0.0f && d05RawCm < SCAN_MIN_RANGE_CM))
+    // Chỉ kết luận tường khi d05 quá sát (-2/<3 cm) VÀ d04 cũng nằm sát mặt tường (<= 13 cm); nếu d04 xa thì là vật sát mũi
+    if ((d05RawCm == ECHO_ERROR_TOO_CLOSE ||
+         (d05RawCm > 0.0f && d05RawCm < SCAN_MIN_RANGE_CM)) &&
+        d04RawCm <= (2.0f + SENSOR_DEPTH_OFFSET_CM + SCAN_OBSTACLE_TOLERANCE_CM))
       return TARGET_OBSTACLE;
     if (d05RawCm == ECHO_ERROR_TIMEOUT && d04RawCm <= SCAN_CLOSE_WALL_SRF04_CM)
       return TARGET_OBSTACLE;
@@ -87,12 +114,13 @@ static float effectiveWallDistCm(float d05Cm, float d04Cm)
   return 0.0f;
 }
 
-// Đổi điểm cực (góc servo, cự ly cm) sang tọa độ 2D Descartes (cm)
+// Đổi điểm cực (góc servo, cự ly từ mặt đầu dò cm) sang tọa độ 2D Descartes quanh trục servo (cm)
 static void pointToXY(uint8_t angleDeg, float distCm, float *outX, float *outY)
 {
   float rad = (float)angleDeg * (MATH_PI / 180.0f);
-  *outX = distCm * cosf(rad);
-  *outY = distCm * sinf(rad);
+  float rCm = SENSOR_FACE_OFFSET_CM + distCm;
+  *outX = rCm * cosf(rad);
+  *outY = rCm * sinf(rad);
 }
 
 // Tính trung vị của mảng số thực (sắp xếp tại chỗ)
@@ -143,7 +171,7 @@ static uint8_t captureScanProfile(uint8_t arcStartDeg, uint8_t arcEndDeg, uint8_
 {
   uint8_t count = 0u;
   uint8_t seqObjHits = 0u;
-  uint8_t srf04ErrCount = 0u;
+  uint8_t topErrCount = 0u;
 
   debugDecision("SCANNING");
   moveServoSmooth(arcStartDeg);
@@ -182,13 +210,13 @@ static uint8_t captureScanProfile(uint8_t arcStartDeg, uint8_t arcEndDeg, uint8_
       seqObjHits = 0u;
 
     if (isValidD05(d05RawCm) && d04RawCm == ECHO_ERROR_TIMEOUT)
-      srf04ErrCount++;
+      topErrCount++;
 
     debugScan(d05RawCm, d04RawCm, (uint8_t)a, seqObjHits, type);
   }
 
-  if (srf04ErrCount >= SCAN_CONFIRM_COUNT)
-    debugLog("SENSOR_WARN srf04_err=%u\r\n", srf04ErrCount);
+  if (topErrCount >= SCAN_CONFIRM_COUNT)
+    debugLog("SENSOR_WARN top_err=%u\r\n", topErrCount);
 
   return count;
 }
@@ -219,12 +247,14 @@ static float initChordBasis(const ScanPoint *pA, const ScanPoint *pB,
   float x1 = 0.0f, y1 = 0.0f;
   pointToXY(pA->angleDeg, pA->d05Cm, x0, y0);
   pointToXY(pB->angleDeg, pB->d05Cm, &x1, &y1);
-  float chordCm = hypotf(x1 - *x0, y1 - *y0);
+  float dx = x1 - *x0;
+  float dy = y1 - *y0;
+  float chordCm = sqrtf(dx * dx + dy * dy);
   if (chordCm <= 0.0f)
     return 0.0f;
 
-  *ux = (x1 - *x0) / chordCm;
-  *uy = (y1 - *y0) / chordCm;
+  *ux = dx / chordCm;
+  *uy = dy / chordCm;
   if (inwardSign)
   {
     float origCross = (-(*x0)) * (*uy) - (-(*y0)) * (*ux);
@@ -259,7 +289,7 @@ static void computeLineMetrics(const ScanPoint *profile, const uint8_t *idx, uin
   }
 }
 
-// Đo độ nhô cục bộ về phía xe so với dây cung hai vai (±24°) để bắt vật sát tường
+// Đo độ nhô cục bộ về phía xe so với dây cung hai vai (±15°) để bắt vật sát tường
 static void computeLocalBumpMetrics(const ScanPoint *profile, const uint8_t *idx, uint8_t n,
                                     float *outMaxProtrudeCm, uint8_t *outPeakPos,
                                     float *outProtrudeArr)
@@ -293,10 +323,10 @@ static void computeLocalBumpMetrics(const ScanPoint *profile, const uint8_t *idx
   }
 }
 
-// Kiểm tra đoạn d05 có tăng/giảm đơn điệu đủ lớn (tường nghiêng khi SRF04 trượt gương)
+// Kiểm tra đoạn d05 có tăng/giảm đơn điệu đủ lớn (tường nghiêng khi SRF05 trên trượt gương)
 static bool isMonotonicRamp(const ScanPoint *profile, const uint8_t *idx, uint8_t n)
 {
-  if (n < 4u)
+  if (n < 3u)
     return false;
 
   float dFirst = profile[idx[0]].d05Cm;
@@ -306,6 +336,8 @@ static bool isMonotonicRamp(const ScanPoint *profile, const uint8_t *idx, uint8_
 
   bool incOk = true;
   bool decOk = true;
+  uint8_t incSteps = 0u;
+  uint8_t decSteps = 0u;
   for (uint8_t i = 0u; (i + 1u) < n; i++)
   {
     float d0 = profile[idx[i]].d05Cm;
@@ -314,8 +346,12 @@ static bool isMonotonicRamp(const ScanPoint *profile, const uint8_t *idx, uint8_
       incOk = false;
     if (d1 > (d0 + SCAN_WALL_RAMP_MONO_TOL_CM))
       decOk = false;
+    if ((d1 - d0) >= 1.5f)
+      incSteps++;
+    if ((d0 - d1) >= 1.5f)
+      decSteps++;
   }
-  return incOk || decOk;
+  return (incOk && incSteps >= 2u) || (decOk && decSteps >= 2u);
 }
 
 // Tạo ứng viên cụm từ dải chỉ số lõi [first..last] của đoạn
@@ -323,27 +359,50 @@ static void buildCandidateFromRange(const ScanPoint *profile, const uint8_t *idx
                                     uint8_t first, uint8_t last, bool isWallBump,
                                     ScanCluster *candidates, uint8_t *candCount, uint8_t maxCandidates)
 {
+  float allDists[SCAN_MAX_POINTS];
+  uint8_t allCount = 0u;
   float minDist = SCAN_MAX_RANGE_CM + 1.0f;
+  uint8_t minPos = first;
   for (uint8_t i = first; i <= last; i++)
   {
     float d = profile[idx[i]].d05Cm;
+    allDists[allCount++] = d;
     if (d < minDist)
+    {
       minDist = d;
+      minPos = i;
+    }
   }
 
+  // Mở rộng lõi liên tiếp quanh đỉnh gần nhất, tránh bắc cầu qua khe lõm nối nhầm sang mép tường bên cạnh
   float coreDists[SCAN_MAX_POINTS];
+  uint8_t coreL = minPos;
+  uint8_t coreR = minPos;
+  while (coreL > first && profile[idx[coreL - 1u]].d05Cm <= (minDist + SCAN_CORE_DEPTH_MARGIN_CM))
+    coreL--;
+  while (coreR < last && profile[idx[coreR + 1u]].d05Cm <= (minDist + SCAN_CORE_DEPTH_MARGIN_CM))
+    coreR++;
+
   uint8_t coreCount = 0u;
-  uint8_t coreStartDeg = 0u;
-  uint8_t coreEndDeg = 0u;
-  for (uint8_t i = first; i <= last; i++)
+  uint8_t coreStartDeg = profile[idx[coreL]].angleDeg;
+  uint8_t coreEndDeg = profile[idx[coreR]].angleDeg;
+  for (uint8_t i = coreL; i <= coreR; i++)
+    coreDists[coreCount++] = profile[idx[i]].d05Cm;
+  // Tránh 1 điểm nhiễu/mép tường gần hơn chiếm quyền tâm cụm của cả nhóm điểm vật ổn định
+  if (coreCount < SCAN_CONFIRM_COUNT && allCount >= SCAN_CONFIRM_COUNT)
   {
-    float d = profile[idx[i]].d05Cm;
-    if (d <= (minDist + SCAN_CORE_DEPTH_MARGIN_CM))
+    float segMed = computeMedian(allDists, allCount);
+    coreCount = 0u;
+    for (uint8_t i = first; i <= last; i++)
     {
-      if (coreCount == 0u)
-        coreStartDeg = profile[idx[i]].angleDeg;
-      coreEndDeg = profile[idx[i]].angleDeg;
-      coreDists[coreCount++] = d;
+      float d = profile[idx[i]].d05Cm;
+      if (fabsf(d - segMed) <= SCAN_CORE_DEPTH_MARGIN_CM)
+      {
+        if (coreCount == 0u)
+          coreStartDeg = profile[idx[i]].angleDeg;
+        coreEndDeg = profile[idx[i]].angleDeg;
+        coreDists[coreCount++] = d;
+      }
     }
   }
   if (coreCount == 0u)
@@ -420,9 +479,11 @@ static void processSegment(const ScanPoint *profile, const uint8_t *idx, uint8_t
 
   bool hasWallObs = (obsCount >= ((n >= 10u) ? SCAN_WALL_OBS_MIN_HITS : SCAN_CONFIRM_COUNT));
   bool isWideFlat = (n >= 4u) && (segSpanDeg >= SCAN_WALL_MIN_SPAN_DEG) && (maxErrCm <= SCAN_WALL_LINE_ERR_CM);
-  bool isAngledRamp = (n >= 4u) && (chordCm >= SCAN_WALL_RAMP_MIN_WIDTH_CM) &&
+  bool isAngledRamp = (n >= 3u) && (chordCm >= SCAN_WALL_RAMP_MIN_WIDTH_CM) &&
                       (maxErrCm <= SCAN_WALL_LINE_ERR_CM) && isMonotonicRamp(profile, idx, n);
-  bool isWallSeg = hasWallObs || isWideFlat || isAngledRamp;
+  bool touchesEdge = (segStartDeg >= SCAN_MAX_DEG || segEndDeg <= SCAN_MIN_DEG);
+  bool isEdgeWallStub = (n == 2u) && touchesEdge;
+  bool isWallSeg = hasWallObs || isWideFlat || isAngledRamp || isEdgeWallStub;
 
   if (isWallSeg)
   {
@@ -458,6 +519,12 @@ static void processSegment(const ScanPoint *profile, const uint8_t *idx, uint8_t
 
         if (bCount >= SCAN_CONFIRM_COUNT && bSpanDeg <= SCAN_BUMP_MAX_SPAN_DEG)
         {
+          if (bL >= 2u)
+            addLocalWallSeg(segStartDeg, profile[idx[bL - 1u]].angleDeg,
+                            profile[idx[0]].d05Cm, profile[idx[bL - 1u]].d05Cm);
+          if ((uint8_t)(n - 1u - bR) >= 2u)
+            addLocalWallSeg(profile[idx[bR + 1u]].angleDeg, segEndDeg,
+                            profile[idx[bR + 1u]].d05Cm, profile[idx[n - 1u]].d05Cm);
           debugLog("WALL_BUMP start=%u end=%u prot=%s span=%u\r\n",
                    angL, angR, debugF1(maxProtrudeCm), bSpanDeg);
           buildCandidateFromRange(profile, idx, bL, bR, true, candidates, candCount, maxCandidates);
@@ -465,6 +532,36 @@ static void processSegment(const ScanPoint *profile, const uint8_t *idx, uint8_t
         }
       }
     }
+
+    {
+      float segDists[SCAN_MAX_POINTS];
+      for (uint8_t i = 0u; i < n; i++)
+        segDists[i] = profile[idx[i]].d05Cm;
+      float medDist = computeMedian(segDists, n);
+      uint8_t centerDeg = (uint8_t)(((uint16_t)segStartDeg + (uint16_t)segEndDeg) / 2u);
+
+      // Tách riêng cụm hẹp nằm gọn trong cung ở xa (>24 cm) bị SRF05 trên loe chùm để kiểm chứng (bỏ mảng tường bị cắt biên 45°/135°)
+      bool touchesArcEdge = (segStartDeg >= SCAN_MAX_DEG || segEndDeg <= SCAN_MIN_DEG);
+      if (!curScanFineMode && !touchesArcEdge && obsCount > 0u &&
+          chordCm <= SCAN_SUSPECT_MAX_CHORD_CM &&
+          segSpanDeg < SCAN_WALL_WIDE_SPAN_DEG &&
+          medDist > AGV_WALL_CONFIRM_DIST_CM)
+      {
+        if (!lastExtra.hasSuspect || medDist < lastExtra.suspectDistCm)
+        {
+          lastExtra.hasSuspect = true;
+          lastExtra.suspectAngleDeg = centerDeg;
+          lastExtra.suspectDistCm = medDist;
+        }
+        debugLog("SEG_SUSPECT ang=%u d=%s w=%s\r\n", centerDeg, debugF1(medDist), debugF1(chordCm));
+        return;
+      }
+    }
+
+    if (chordCm >= SCAN_WALL_WIDE_CHORD_CM || segSpanDeg >= SCAN_WALL_WIDE_SPAN_DEG)
+      lastExtra.isConfirmedWideWall = true;
+    if (n >= 2u)
+      addLocalWallSeg(segStartDeg, segEndDeg, profile[idx[0]].d05Cm, profile[idx[n - 1u]].d05Cm);
 
     recordWideFrontWallIfSpan(profile, idx, n, segStartDeg, segEndDeg, segSpanDeg);
     debugLog("SEG_DROP_WALL start=%u end=%u n=%u obs=%u span=%u w=%s err=%s prot=%s\r\n",
@@ -478,9 +575,18 @@ static void processSegment(const ScanPoint *profile, const uint8_t *idx, uint8_t
 
   if (n >= 4u && segSpanDeg > SCAN_OBJ_MAX_SPAN_DEG)
   {
-    recordWideFrontWallIfSpan(profile, idx, n, segStartDeg, segEndDeg, segSpanDeg);
-    debugLog("SEG_DROP_WIDE start=%u end=%u span=%u\r\n", segStartDeg, segEndDeg, segSpanDeg);
-    return;
+    float segDists[SCAN_MAX_POINTS];
+    for (uint8_t i = 0u; i < n; i++)
+      segDists[i] = profile[idx[i]].d05Cm;
+    // Vật rất gần đầu dò bị chùm siêu âm loe rộng góc -> không loại nhầm thành tường rộng
+    if (computeMedian(segDists, n) > (AGV_GRAB_DIST_MAX_CM + 5.0f))
+    {
+      lastExtra.isConfirmedWideWall = true;
+      addLocalWallSeg(segStartDeg, segEndDeg, profile[idx[0]].d05Cm, profile[idx[n - 1u]].d05Cm);
+      recordWideFrontWallIfSpan(profile, idx, n, segStartDeg, segEndDeg, segSpanDeg);
+      debugLog("SEG_DROP_WIDE start=%u end=%u span=%u\r\n", segStartDeg, segEndDeg, segSpanDeg);
+      return;
+    }
   }
 
   buildCandidateFromRange(profile, idx, 0u, (uint8_t)(n - 1u), false, candidates, candCount, maxCandidates);
@@ -499,7 +605,8 @@ static uint8_t extractSegmentsAndCandidates(const ScanPoint *profile, uint8_t co
     if (!isValidD05(profile[i].d05Cm) &&
         isValidD05(profile[i - 1u].d05Cm) &&
         isValidD05(profile[i + 1u].d05Cm) &&
-        fabsf(profile[i - 1u].d05Cm - profile[i + 1u].d05Cm) <= SCAN_SEG_JUMP_CM)
+        profile[i - 1u].type == profile[i + 1u].type &&
+        fabsf(profile[i - 1u].d05Cm - profile[i + 1u].d05Cm) <= SCAN_CORE_DEPTH_MARGIN_CM)
     {
       isBridge[i] = true;
     }
@@ -509,19 +616,23 @@ static uint8_t extractSegmentsAndCandidates(const ScanPoint *profile, uint8_t co
   uint8_t segIdx[SCAN_MAX_POINTS];
   uint8_t segLen = 0u;
   float lastD05 = 0.0f;
+  ScanTargetType lastType = TARGET_NONE;
 
   for (uint8_t i = 0u; i < count; i++)
   {
     float d = profile[i].d05Cm;
     if (isValidD05(d))
     {
-      if (segLen > 0u && fabsf(d - lastD05) > SCAN_SEG_JUMP_CM)
+      // Luôn tách ranh giới vật (OBJ) <-> tường (WALL) để tường gần bên không nuốt cụm vật (kể cả khi cùng cự ly d05)
+      bool typeSplit = (lastType != profile[i].type);
+      if (segLen > 0u && (fabsf(d - lastD05) > SCAN_SEG_JUMP_CM || typeSplit))
       {
         processSegment(profile, segIdx, segLen, candidates, &candCount, maxCandidates);
         segLen = 0u;
       }
       segIdx[segLen++] = i;
       lastD05 = d;
+      lastType = profile[i].type;
     }
     else if (segLen > 0u && !isBridge[i])
     {
@@ -548,12 +659,69 @@ static uint8_t extractSegmentsAndCandidates(const ScanPoint *profile, uint8_t co
   return candCount;
 }
 
-// Bù độ rơ SG90 theo chiều quét rồi đo xác minh 5 mẫu tại góc tâm ứng viên
-static bool verifyClusterCenter(const ScanCluster *cand, int16_t scanDir, float *outDistCm)
+// Quét đối chứng ngược chiều quanh ứng viên (triệt tiêu độ rơ SG90 và lọc mép tường 1 chiều) rồi đo 5 mẫu chốt tâm
+static bool verifyClusterCenter(const ScanCluster *cand, int16_t scanDir,
+                                uint8_t *outAngleDeg, float *outDistCm, float *outD04Cm)
 {
+  uint8_t verifyAng = cand->centerDeg;
+
+  if (!cand->isWallBump)
+  {
+    // Quét ngược chiều cửa sổ hẹp ±10° quanh tâm ứng viên để đối chứng 2 chiều
+    int16_t revDir = (scanDir < 0) ? (int16_t)SCAN_STEP_DEG : -(int16_t)SCAN_STEP_DEG;
+    int16_t aLo = (int16_t)cand->centerDeg - (int16_t)(2u * SCAN_STEP_DEG);
+    int16_t aHi = (int16_t)cand->centerDeg + (int16_t)(2u * SCAN_STEP_DEG);
+    if (aLo < (int16_t)SERVO_SAFE_MIN_DEG) aLo = (int16_t)SERVO_SAFE_MIN_DEG;
+    if (aHi > (int16_t)SERVO_SAFE_MAX_DEG) aHi = (int16_t)SERVO_SAFE_MAX_DEG;
+    int16_t revStart = (revDir > 0) ? aLo : aHi;
+    int16_t revEnd = (revDir > 0) ? aHi : aLo;
+
+    moveServoSmooth((uint8_t)revStart);
+    HAL_Delay(SCAN_SETTLE_MS);
+
+    uint8_t revObjCount = 0u;
+    uint8_t revObsCore = 0u;
+    uint8_t revFirstDeg = 0u;
+    uint8_t revLastDeg = 0u;
+    for (int16_t a = revStart; (revDir > 0) ? (a <= revEnd) : (a >= revEnd); a += revDir)
+    {
+      if (a != revStart)
+        moveServoForScanStep((uint8_t)a);
+      float rd05 = ECHO_ERROR_TIMEOUT;
+      float rd04 = ECHO_ERROR_TIMEOUT;
+      measureDualDistanceCM(&rd05, &rd04);
+      if (isValidD05(rd05) || (rd04 > 0.0f && rd04 <= SRF04_MAX_RANGE_CM))
+        measureDualDistanceConfirmCM(rd05, rd04, &rd05, &rd04);
+      ScanTargetType rType = scanClassifyTarget(rd05, rd04);
+      int16_t dAng = a - (int16_t)cand->centerDeg;
+      if (dAng < 0) dAng = -dAng;
+      if (rType == TARGET_OBSTACLE && dAng <= (int16_t)SCAN_STEP_DEG &&
+          fabsf(effectiveWallDistCm(rd05, rd04) - cand->clusterDist) <= SCAN_VERIFY_DEPTH_TOL_CM)
+      {
+        revObsCore++;
+      }
+      else if (rType == TARGET_OBJECT && fabsf(rd05 - cand->clusterDist) <= SCAN_VERIFY_DEPTH_TOL_CM)
+      {
+        if (revObjCount == 0u)
+          revFirstDeg = (uint8_t)a;
+        revLastDeg = (uint8_t)a;
+        revObjCount++;
+      }
+    }
+
+    if (revObsCore >= SCAN_CONFIRM_COUNT || revObjCount < SCAN_CONFIRM_COUNT)
+    {
+      debugLog("CLUSTER_REJECT_REV center=%u d=%s revObj=%u revObs=%u\r\n",
+               cand->centerDeg, debugF1(cand->clusterDist), revObjCount, revObsCore);
+      return false;
+    }
+    uint8_t revCenter = (uint8_t)(((uint16_t)revFirstDeg + (uint16_t)revLastDeg) / 2u);
+    verifyAng = (uint8_t)(((uint16_t)cand->centerDeg + (uint16_t)revCenter) / 2u);
+  }
+
   int16_t preload = (scanDir < 0)
-                        ? ((int16_t)cand->centerDeg + (int16_t)SCAN_BACKLASH_PRELOAD_DEG)
-                        : ((int16_t)cand->centerDeg - (int16_t)SCAN_BACKLASH_PRELOAD_DEG);
+                        ? ((int16_t)verifyAng + (int16_t)SCAN_BACKLASH_PRELOAD_DEG)
+                        : ((int16_t)verifyAng - (int16_t)SCAN_BACKLASH_PRELOAD_DEG);
   if (preload < (int16_t)SERVO_SAFE_MIN_DEG)
     preload = (int16_t)SERVO_SAFE_MIN_DEG;
   if (preload > (int16_t)SERVO_SAFE_MAX_DEG)
@@ -564,10 +732,11 @@ static bool verifyClusterCenter(const ScanCluster *cand, int16_t scanDir, float 
     moveServoSmooth((uint8_t)preload);
     HAL_Delay(SCAN_STEP_SETTLE_MS);
   }
-  moveServoSmooth(cand->centerDeg);
+  moveServoSmooth(verifyAng);
   HAL_Delay(SCAN_SETTLE_MS);
 
   float validDists[SCAN_VERIFY_SAMPLES];
+  float validD04[SCAN_VERIFY_SAMPLES];
   uint8_t objHits = 0u;
   uint8_t obsHits = 0u;
 
@@ -582,7 +751,10 @@ static bool verifyClusterCenter(const ScanCluster *cand, int16_t scanDir, float 
     {
       // Vật nằm sát tường có thể làm SRF04 bắt mép tường sau -> xác minh theo độ ổn định d05 tại đỉnh lồi
       if (isValidD05(d05) && fabsf(d05 - cand->clusterDist) <= SCAN_BUMP_VERIFY_TOL_CM)
+      {
+        validD04[objHits] = d04;
         validDists[objHits++] = d05;
+      }
     }
     else if (type == TARGET_OBSTACLE)
     {
@@ -591,6 +763,7 @@ static bool verifyClusterCenter(const ScanCluster *cand, int16_t scanDir, float 
     else if (type == TARGET_OBJECT &&
              fabsf(d05 - cand->clusterDist) <= SCAN_VERIFY_DEPTH_TOL_CM)
     {
+      validD04[objHits] = d04;
       validDists[objHits++] = d05;
     }
   }
@@ -598,23 +771,45 @@ static bool verifyClusterCenter(const ScanCluster *cand, int16_t scanDir, float 
   uint8_t maxObs = (cand->count <= 1u) ? 0u : SCAN_VERIFY_MAX_OBS_HITS;
   if (obsHits <= maxObs && objHits >= SCAN_VERIFY_MIN_HITS)
   {
+    *outAngleDeg = verifyAng;
     *outDistCm = computeMedian(validDists, objHits);
+    *outD04Cm = computeMedian(validD04, objHits);
     return true;
   }
 
   debugLog("CLUSTER_REJECT center=%u d=%s obj=%u/%u obs=%u\r\n",
-           cand->centerDeg, debugF1(cand->clusterDist), objHits, SCAN_VERIFY_SAMPLES, obsHits);
+           verifyAng, debugF1(cand->clusterDist), objHits, SCAN_VERIFY_SAMPLES, obsHits);
   return false;
+}
+
+// Kiểm tra tường trước mũi có thực sự chắn đường tới ứng viên hay không (không loại nhầm vật gần hơn hoặc nằm ở phía thoáng đối diện)
+static bool isCandBlockedByFrontWall(const ScanCluster *cand, bool hasFrontWall,
+                                     float wallD05, uint8_t wallMinDeg, uint8_t wallMaxDeg)
+{
+  if (!hasFrontWall || cand->isWallBump)
+    return false;
+  if (wallD05 >= AGV_GRAB_DIST_MAX_CM)
+  {
+    bool wallRightOnly = (wallMaxDeg < SCAN_WALL_MIN_DEG);
+    bool wallLeftOnly = (wallMinDeg > SCAN_WALL_MAX_DEG);
+    if ((wallRightOnly && cand->centerDeg >= SCAN_HOME_ANGLE) ||
+        (wallLeftOnly && cand->centerDeg <= SCAN_HOME_ANGLE))
+      return false;
+  }
+  return cand->clusterDist >= (wallD05 - SCAN_CORE_DEPTH_MARGIN_CM);
 }
 
 // Xác nhận tường áp sát rộng (60°..120°), mù kép hoặc tường thẳng trước mũi (80°..100°)
 static bool detectFrontWallFromProfile(const ScanPoint *profile, uint8_t count,
-                                       float *outD05Cm, float *outD04Cm)
+                                       float *outD05Cm, float *outD04Cm,
+                                       uint8_t *outMinDeg, uint8_t *outMaxDeg)
 {
   uint8_t closeIdx[SCAN_MAX_POINTS];
   float closeBuf[SCAN_MAX_POINTS];
   uint8_t closeCount = 0u;
   uint8_t blindCount = 0u;
+  *outMinDeg = SCAN_WALL_MIN_DEG;
+  *outMaxDeg = SCAN_WALL_MAX_DEG;
 
   for (uint8_t i = 0u; i < count; i++)
   {
@@ -634,12 +829,13 @@ static bool detectFrontWallFromProfile(const ScanPoint *profile, uint8_t count,
     {
       float d05 = profile[i].d05Cm;
       float d04 = profile[i].d04Cm;
-      bool isBlind = (d05 == ECHO_ERROR_TOO_CLOSE) ||
-                     (d05 > 0.0f && d05 < SCAN_MIN_RANGE_CM) ||
-                     (d05 == ECHO_ERROR_TIMEOUT &&
-                      (d04 <= SCAN_CLOSE_WALL_SRF04_CM ||
-                       d04 == ECHO_ERROR_TIMEOUT ||
-                       d04 == ECHO_ERROR_TOO_CLOSE));
+      bool d04CloseOrErr = (d04 <= SCAN_CLOSE_WALL_SRF04_CM ||
+                            d04 == ECHO_ERROR_TIMEOUT ||
+                            d04 == ECHO_ERROR_TOO_CLOSE);
+      bool isBlind = d04CloseOrErr &&
+                     ((d05 == ECHO_ERROR_TOO_CLOSE) ||
+                      (d05 > 0.0f && d05 < SCAN_MIN_RANGE_CM) ||
+                      (d05 == ECHO_ERROR_TIMEOUT));
       if (isBlind)
         blindCount++;
     }
@@ -647,7 +843,14 @@ static bool detectFrontWallFromProfile(const ScanPoint *profile, uint8_t count,
 
   if (closeCount >= SCAN_CONFIRM_COUNT)
   {
+    uint8_t a0 = profile[closeIdx[0]].angleDeg;
+    uint8_t a1 = profile[closeIdx[closeCount - 1u]].angleDeg;
+    *outMinDeg = (a0 <= a1) ? a0 : a1;
+    *outMaxDeg = (a0 >= a1) ? a0 : a1;
     *outD05Cm = computeMedian(closeBuf, closeCount);
+    // Ghi nhận đoạn tường áp sát vào bản đồ 2D để đường về không cắt xuyên qua vùng mù sát mũi
+    if (lastWallSegCount == 0u)
+      addLocalWallSeg(a0, a1, *outD05Cm, *outD05Cm);
     for (uint8_t i = 0u; i < closeCount; i++)
       closeBuf[i] = profile[closeIdx[i]].d04Cm;
     *outD04Cm = computeMedian(closeBuf, closeCount);
@@ -744,6 +947,8 @@ static ScanStatus scanArcCluster(uint8_t arcStartDeg, uint8_t arcEndDeg, uint8_t
   curRightWallHint = false;
   curWideFrontWall = false;
   curWideWallD05 = 0.0f;
+  curScanFineMode = fineMode;
+  resetLastExtra();
 
   uint8_t count = captureScanProfile(arcStartDeg, arcEndDeg, stepDeg, profile, SCAN_MAX_POINTS);
   uint8_t candCount = extractSegmentsAndCandidates(profile, count, candidates, SCAN_MAX_CLUSTERS);
@@ -754,16 +959,20 @@ static ScanStatus scanArcCluster(uint8_t arcStartDeg, uint8_t arcEndDeg, uint8_t
 
   float wallD05 = ECHO_ERROR_TIMEOUT;
   float wallD04 = ECHO_ERROR_TIMEOUT;
-  bool hasFrontWall = detectFrontWallFromProfile(profile, count, &wallD05, &wallD04);
+  uint8_t wallMinDeg = SCAN_WALL_MIN_DEG;
+  uint8_t wallMaxDeg = SCAN_WALL_MAX_DEG;
+  bool hasFrontWall = detectFrontWallFromProfile(profile, count, &wallD05, &wallD04, &wallMinDeg, &wallMaxDeg);
   if (!hasFrontWall && curWideFrontWall)
   {
     hasFrontWall = true;
     wallD05 = curWideWallD05;
     wallD04 = ECHO_OUT_OF_RANGE_CM;
+    wallMinDeg = SCAN_WALL_MIN_DEG;
+    wallMaxDeg = SCAN_WALL_MAX_DEG;
   }
 
   if (hasFrontWall && wallD05 < WALL_BACKUP_TRIGGER_CM &&
-      (candCount == 0u || candidates[0].clusterDist >= wallD05))
+      (candCount == 0u || isCandBlockedByFrontWall(&candidates[0], true, wallD05, wallMinDeg, wallMaxDeg)))
   {
     moveServoSmooth(SCAN_HOME_ANGLE);
     HAL_Delay(SCAN_SETTLE_MS);
@@ -776,8 +985,7 @@ static ScanStatus scanArcCluster(uint8_t arcStartDeg, uint8_t arcEndDeg, uint8_t
 
   for (uint8_t i = 0u; i < candCount; i++)
   {
-    if (!candidates[i].isWallBump && hasFrontWall &&
-        candidates[i].clusterDist >= (wallD05 - SCAN_SEG_JUMP_CM))
+    if (isCandBlockedByFrontWall(&candidates[i], hasFrontWall, wallD05, wallMinDeg, wallMaxDeg))
       continue;
 
     if (fineMode)
@@ -787,15 +995,21 @@ static ScanStatus scanArcCluster(uint8_t arcStartDeg, uint8_t arcEndDeg, uint8_t
         continue;
     }
 
+    uint8_t verifiedAng = candidates[i].centerDeg;
     float verifiedDist = ECHO_ERROR_TIMEOUT;
-    if (verifyClusterCenter(&candidates[i], scanDir, &verifiedDist))
+    float verifiedD04 = ECHO_ERROR_TIMEOUT;
+    if (verifyClusterCenter(&candidates[i], scanDir, &verifiedAng, &verifiedDist, &verifiedD04))
     {
-      *angleDeg = candidates[i].centerDeg;
+      *angleDeg = verifiedAng;
       *distanceCm = verifiedDist;
-      debugLog("CLUSTER arc=[%u..%u] start=%u end=%u hits=%u bump=%u -> center=%u d=%s\r\n",
+      lastExtra.isWallBump = candidates[i].isWallBump;
+      bool topInRng = (verifiedD04 >= SCAN_MIN_RANGE_CM && verifiedD04 <= SRF04_MAX_RANGE_CM);
+      float diffCm = topInRng ? ((verifiedD04 - SENSOR_DEPTH_OFFSET_CM) - verifiedDist)
+                              : (SRF04_MAX_RANGE_CM - SENSOR_DEPTH_OFFSET_CM - verifiedDist);
+      debugLog("CLUSTER arc=[%u..%u] start=%u end=%u hits=%u bump=%u -> center=%u d05=%s d04=%s diff=%s\r\n",
                arcStartDeg, arcEndDeg, candidates[i].startDeg, candidates[i].endDeg,
                candidates[i].count, candidates[i].isWallBump ? 1u : 0u,
-               candidates[i].centerDeg, debugF1(verifiedDist));
+               verifiedAng, debugF1(verifiedDist), debugF1(verifiedD04), debugF1(diffCm));
       HAL_Delay(SCAN_FOUND_HOLD_MS);
       return SCAN_OBJECT_FOUND;
     }
@@ -823,6 +1037,8 @@ void scanInit(void)
   lastFrontClear = false;
   lastLeftWall = false;
   lastRightWall = false;
+  curScanFineMode = false;
+  resetLastExtra();
 }
 
 ScanStatus scanSideArc(ScanSide side, float *distanceCm, uint8_t *angleDeg)
@@ -853,6 +1069,22 @@ void scanGetLastCorridorHint(bool *frontClear, bool *leftWall, bool *rightWall)
   if (frontClear) *frontClear = lastFrontClear;
   if (leftWall) *leftWall = lastLeftWall;
   if (rightWall) *rightWall = lastRightWall;
+}
+
+void scanGetLastExtraInfo(ScanExtraInfo *outInfo)
+{
+  if (outInfo)
+    *outInfo = lastExtra;
+}
+
+uint8_t scanGetLastWallSegments(ScanWallSegLocal *outSegs, uint8_t maxSegs)
+{
+  if (!outSegs || maxSegs == 0u)
+    return 0u;
+  uint8_t n = (lastWallSegCount < maxSegs) ? lastWallSegCount : maxSegs;
+  for (uint8_t i = 0u; i < n; i++)
+    outSegs[i] = lastWallSegs[i];
+  return n;
 }
 
 ScanStatus scanSimpleForObject(float *distanceCm, uint8_t *angleDeg)
