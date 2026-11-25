@@ -35,7 +35,4 @@ _templates/
 build/
 Drivers/
 __pycache__/
-CLAUDE.md
-AGENTS.md
 ultra_agv_brrbrbr/tests/
-tools/
