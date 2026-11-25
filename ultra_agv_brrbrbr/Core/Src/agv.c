@@ -80,10 +80,25 @@ static bool isInGrabWindow(float d05, uint8_t angleDeg)
   return isInGrabRange(d05) && (err <= (int16_t)AGV_GRAB_ANGLE_TOL_DEG);
 }
 
+// Mẫu chính diện có bằng chứng tường: SRF05 trên thấy cùng 1 mặt phẳng với SRF05 dưới (không tính luật chỉ SRF05 dưới thấy)
+static bool isPlaneWallSample(float d05, float d04)
+{
+  return d04 != ECHO_ERROR_TIMEOUT && d04 <= SRF04_MAX_RANGE_CM &&
+         scanClassifyTarget(d05, d04) == TARGET_OBSTACLE;
+}
+
+// Mẫu chính diện sau khi đã chốt vật: SRF05 dưới thấy mặt vật và không có bằng chứng tường (vật nghiêng mặt SRF05 trên mất đỉnh)
+static bool isFrontObjSample(float d05, float d04, bool wallBackedObj)
+{
+  if (d05 < SCAN_MIN_RANGE_CM || d05 > SCAN_MAX_RANGE_CM)
+    return false;
+  return wallBackedObj || !isPlaneWallSample(d05, d04);
+}
+
 // Xác nhận tường thật gần mũi để không nhầm vật sát tường hoặc vật vượt quá mũi thành tường
 static bool isCloseWallSample(float d05, float d04)
 {
-  if ((scanClassifyTarget(d05, d04) == TARGET_OBSTACLE) && (d05 <= AGV_WALL_CONFIRM_DIST_CM))
+  if (isPlaneWallSample(d05, d04) && (d05 <= AGV_WALL_CONFIRM_DIST_CM))
     return true;
   if (d05 >= 0.0f && d05 < SCAN_MIN_RANGE_CM && d04 >= 0.0f &&
       fabsf((d04 - SENSOR_DEPTH_OFFSET_CM) - d05) <= SCAN_OBSTACLE_TOLERANCE_CM)
@@ -322,15 +337,26 @@ static void handleWall(float wallDistCm)
   HAL_Delay(WALL_HOLD_MS);
 }
 
-// Chỉ xoay khi chạy thẳng sẽ làm tâm vật lệch ngang quá dung sai ngàm gắp (bỏ xoay góc quá nhỏ ở gần)
+// Chỉ xoay khi chạy thẳng sẽ làm tâm vật lệch ngang quá dung sai ngàm gắp; không bao giờ xoay góc quá nhỏ
 static bool needTurnToObj(float errDeg, float distCm)
 {
   float absErr = fabsf(errDeg);
   if (absErr >= 90.0f)
     return true;
-  if (absErr < (float)AGV_MIN_SPIN_DEG && distCm <= AGV_CLOSE_NO_FINE_DIST_CM)
+  if (absErr < (float)AGV_MIN_SPIN_DEG)
     return false;
   return distCm * sinf(absErr * (MATH_PI / 180.0f)) > AGV_OBJ_LATERAL_TOL_CM;
+}
+
+int16_t agvTurnCmdToObject(uint8_t angleDeg, float distanceCm)
+{
+  NavPose obj = computeObjectCenter(angleDeg, distanceCm);
+  float dx = obj.xCm - robotPose.xCm;
+  float dy = obj.yCm - robotPose.yCm;
+  float turnMathDeg = destinationNormalizeDeg(atan2f(dy, dx) * (180.0f / MATH_PI) - robotPose.thetaDeg);
+  if (!needTurnToObj(turnMathDeg, sqrtf(dx * dx + dy * dy)))
+    return 0;
+  return (int16_t)lroundf(-turnMathDeg);
 }
 
 // Vật quá sát mũi (d05 == -2 hoặc < 2 cm) nhưng cảm biến trên đo xa/bình thường -> chắc chắn là vật cần lùi ra
@@ -438,20 +464,15 @@ static bool goToDetectedObject(float distanceCm, uint8_t angleDeg, bool wallBack
   objectCenter = computeObjectCenter(angleDeg, distanceCm);
   float dx = objectCenter.xCm - robotPose.xCm;
   float dy = objectCenter.yCm - robotPose.yCm;
-  float distToObjCm = sqrtf(dx * dx + dy * dy);
   debugLog("OBJ_COORD pose=(%s,%s,%s) obj=(%s,%s) ang=%u d=%s\r\n",
            debugF1(robotPose.xCm), debugF1(robotPose.yCm), debugF1(robotPose.thetaDeg),
            debugF1(objectCenter.xCm), debugF1(objectCenter.yCm), angleDeg, debugF1(distanceCm));
 
   // Xoay tâm trục xe hướng thẳng về tọa độ tâm vật vừa tính
   float headingToObj = atan2f(dy, dx) * (180.0f / MATH_PI);
-  float turnMathDeg = destinationNormalizeDeg(headingToObj - robotPose.thetaDeg);
-  int16_t coarseCmd = 0;
-  if (needTurnToObj(turnMathDeg, distToObjCm))
-  {
-    coarseCmd = (int16_t)lroundf(-turnMathDeg);
+  int16_t coarseCmd = agvTurnCmdToObject(angleDeg, distanceCm);
+  if (coarseCmd != 0)
     spinAndTrackPose(coarseCmd);
-  }
 
   // Nếu sau xoay thô hướng xe vẫn lệch quá AGV_POST_SPIN_MAX_ERR_DEG so với vật thì hủy để quét lại
   float postSpinErr = fabsf(destinationNormalizeDeg(headingToObj - robotPose.thetaDeg));
@@ -480,7 +501,7 @@ static bool goToDetectedObject(float distanceCm, uint8_t angleDeg, bool wallBack
       handleWall(f05);
       return false;
     }
-    if (!wallBackedObj && fType == TARGET_OBSTACLE)
+    if (!wallBackedObj && isPlaneWallSample(f05, f04))
     {
       debugAlign(coarseCmd, SCAN_HOME_ANGLE, 0, f05, false);
       return false;
@@ -490,8 +511,7 @@ static bool goToDetectedObject(float distanceCm, uint8_t angleDeg, bool wallBack
       lastD05 = f05;
       lastD04 = f04;
     }
-    else if (fType == TARGET_OBJECT ||
-             (wallBackedObj && f05 >= SCAN_MIN_RANGE_CM && f05 <= SCAN_MAX_RANGE_CM))
+    else if (isFrontObjSample(f05, f04, wallBackedObj))
     {
       lastD05 = f05;
       lastD04 = f04;
@@ -584,8 +604,7 @@ static bool goToDetectedObject(float distanceCm, uint8_t angleDeg, bool wallBack
         handleWall(midD05);
         return false;
       }
-      bool midIsObj = (midType == TARGET_OBJECT) ||
-                      (wallBackedObj && midD05 >= SCAN_MIN_RANGE_CM && midD05 <= SCAN_MAX_RANGE_CM);
+      bool midIsObj = isFrontObjSample(midD05, midD04, wallBackedObj);
       if (!midIsObj || midD05 > (lastD05 - AGV_DRIVE_MISS_RATIO * (float)driveCm))
       {
         debugLog("MID_MISSED prev=%s got=%s type=%u\r\n",
@@ -641,14 +660,13 @@ static bool goToDetectedObject(float distanceCm, uint8_t angleDeg, bool wallBack
       handleWall(d05);
       return false;
     }
-    if (!wallBackedObj && scanClassifyTarget(d05, d04) == TARGET_OBSTACLE)
+    if (!wallBackedObj && isPlaneWallSample(d05, d04))
     {
       debugDriveEnd(HAL_GetTick() - driveStartMs, d05, d04, PID_LOST_MAX, "DRV_WALL_FAR");
       return false;
     }
 
-    if (scanClassifyTarget(d05, d04) != TARGET_OBJECT &&
-        !(wallBackedObj && d05 >= SCAN_MIN_RANGE_CM && d05 <= SCAN_MAX_RANGE_CM))
+    if (!isFrontObjSample(d05, d04, wallBackedObj))
     {
       debugDriveEnd(HAL_GetTick() - driveStartMs, d05, d04, PID_LOST_MAX, "DRV_LOST");
       return false;
@@ -857,11 +875,15 @@ void agvRun(void)
       {
         inspectSteps++;
         corridorSteps = 0u;
+        // Nghi ngờ chính diện thì chạy thẳng tới soi, lệch hẳn mới xoay về nó (không xoay góc vụn)
         int16_t suspSpin = (int16_t)SCAN_HOME_ANGLE - (int16_t)extra.suspectAngleDeg;
-        if (needTurnToObj((float)suspSpin, SENSOR_FACE_OFFSET_CM + extra.suspectDistCm + OBJ_CENTER_OFFSET_CM))
+        if (abs(suspSpin) > (int)SCAN_SUSPECT_FRONT_HALF_DEG)
           spinAndTrackPose(suspSpin);
+        else
+          suspSpin = 0;
         int16_t stepCm = computeInspectDriveCm(extra.suspectDistCm);
-        debugLog("SUSP_INSPECT a=%u d=%dcm\r\n", extra.suspectAngleDeg, stepCm);
+        debugLog("SUSP_INSPECT a=%u s_d=%s spin=%d d=%dcm\r\n", extra.suspectAngleDeg,
+                 debugF1(extra.suspectDistCm), suspSpin, stepCm);
         drivePidAndTrackPose(stepCm);
       }
       else
@@ -900,6 +922,33 @@ void agvRun(void)
     HAL_Delay(20u);
     break;
   }
+}
+
+void agvBenchReset(void)
+{
+  agvState = AGV_STATE_SCAN;
+  corridorSteps = 0u;
+  inspectSteps = 0u;
+  scannedSectorMask = 0u;
+  didBackupLastIter = false;
+  robotPose.xCm = 0.0f;
+  robotPose.yCm = 0.0f;
+  robotPose.thetaDeg = 0.0f;
+  objectCenter = robotPose;
+  destinationReset();
+}
+
+bool agvApproachObject(float distanceCm, uint8_t angleDeg, bool wallBackedObj)
+{
+  return goToDetectedObject(distanceCm, angleDeg, wallBackedObj);
+}
+
+void agvGetPose(NavPose *outPose, NavPose *outObj)
+{
+  if (outPose)
+    *outPose = robotPose;
+  if (outObj)
+    *outObj = objectCenter;
 }
 
 void agvTestScanGrabInit(void)

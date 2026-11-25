@@ -24,6 +24,7 @@
 #include "agv.h"
 #include "scanbench.h"
 #include "motorbench.h"
+#include "agvbench.h"
 
 /* USER CODE END Includes */
 
@@ -125,6 +126,7 @@ int main(void)
     agvRun();
     // scanBenchRun();
     // motorBenchRun();
+    // agvBenchRun();
   }
   /* USER CODE END 3 */
 }

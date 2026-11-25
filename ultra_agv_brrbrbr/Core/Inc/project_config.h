@@ -18,7 +18,7 @@
 #define SENSOR_DEPTH_OFFSET_CM 7.0f          // Chênh lệch khoảng cách: SRF05 trên nằm lùi về phía sau 7 cm so với SRF05 dưới
 #define SCAN_OBSTACLE_TOLERANCE_CM 1.8f      // Chênh SRF05 trên (đã bù 7 cm) - SRF05 dưới <= ngưỡng này là tường (đo thật <= 30 cm: tường <= +0.9, rubik >= +2.6)
 #define SCAN_CLASSIFY_MAX_CM 30.0f           // Cự ly tối đa phân loại vật/tường tin cậy; xa hơn chỉ báo nghi ngờ để xe tiến lại soi (cm)
-#define SCAN_TOP_BLIND_MAX_CM 12.0f          // Đo thật: SRF05 trên không thấy rubik khi <= 10 cm, luôn thấy từ 15 cm; chỉ SRF05 dưới thấy mà xa hơn là mép vật cản (cm)
+#define SCAN_TOP_BLIND_MAX_CM 16.0f          // Đo thật: SRF05 trên (sau khi gắn cố định) không thấy rubik khi <= 15 cm, thấy từ 16.6 cm; chỉ SRF05 dưới thấy mà xa hơn là mép vật cản (cm)
 #define SCAN_SEG_JUMP_CM 7.0f                // Ngưỡng nhảy d05 giữa 2 bước liên tiếp để tách đoạn bề mặt (cm)
 #define SCAN_CORE_HALF_DEG 10u               // Nửa bề rộng góc lõi cụm dùng phân loại; mép chùm sóng cho chênh lệch 2 cảm biến sai (độ)
 #define SCAN_WALL_EVIDENCE_DEPTH_CM 2.0f     // Điểm trong cụm cách cự ly lõi <= ngưỡng này mà có dấu hiệu tường thì tính là bằng chứng tường (cm)
@@ -41,7 +41,7 @@
 #define SERVO_MAX_ANGLE_DEG 180u     // Góc quay tối đa của servo (độ)
 #define SERVO_SAFE_MIN_DEG 45u       // Góc quay tối thiểu an toàn tránh cấn dây (độ)
 #define SERVO_SAFE_MAX_DEG 135u      // Góc quay tối đa an toàn tránh cấn dây (độ)
-#define SERVO_CENTER_TRIM_DEG 0      // Bù lệch cơ khí lắp horn SG90 (độ)
+#define SERVO_CENTER_TRIM_DEG 9      // Bù lệch cơ khí lắp horn SG90 (độ); đo I1: chùm 2 SRF05 lệch +7..+10° so với góc lệnh ở 20 và 30 cm
 #define SERVO_SMOOTH_STEP_DEG 1u     // Góc mỗi bước khi quay dần (độ)
 #define SERVO_SMOOTH_DELAY_MS 20u    // Chờ giữa 2 bước khớp chu kỳ PWM 50 Hz của SG90 (ms)
 #define SERVO_DIRECT_STEP_MAX_DEG 5u // Bước quét nhỏ <= ngưỡng này nhảy thẳng rồi chờ ổn định (độ)
@@ -74,6 +74,7 @@
 #define SCAN_FRONT_CLEAR_MIN_DEG 75u      // Góc bắt đầu vùng kiểm tra thông thoáng phía trước mũi (độ)
 #define SCAN_FRONT_CLEAR_MAX_DEG 105u     // Góc kết thúc vùng kiểm tra thông thoáng phía trước mũi (độ)
 #define SCAN_EXPAND_CLEAR_CM 45.0f        // Khoảng trống tối thiểu phía trước để tiến dọc hành lang khi chưa thấy vật (cm)
+#define SCAN_SUSPECT_FRONT_HALF_DEG 15u   // Nghi ngờ lệch 90° <= ngưỡng này là chính diện: được ưu tiên và chạy thẳng tới soi, không xoay (độ)
 
 #define SCAN_FINE_MIN_DEG 60u   // Góc bắt đầu quét hẹp vi chỉnh quanh HOME
 #define SCAN_FINE_MAX_DEG 120u  // Góc kết thúc quét hẹp vi chỉnh
@@ -212,6 +213,11 @@
 #define MOTOR_BENCH_BRAKE_SETTLE_MS 300u  // Chờ bánh dừng hẳn sau phanh trước khi đọc xung cuối (ms)
 #define MOTOR_BENCH_ENC_TIMEOUT_MS 15000u // Thời gian chạy tối đa lệnh đếm xung 1 bánh (ms)
 #define MOTOR_BENCH_STEP_PAUSE_MS 500u    // Nghỉ cho bánh dừng giữa 2 bước kiểm chiều quay (ms)
+
+// --- Bench tích hợp scanner + motor qua UART1 (agvbench) ---
+#define AGV_BENCH_LINE_MAX 32u            // Độ dài tối đa 1 dòng lệnh bench tích hợp (ký tự)
+#define AGV_BENCH_RX_TIMEOUT_MS 100u      // Chờ tối đa mỗi byte lệnh (ms)
+#define AGV_BENCH_TRACE_MS 1000u          // Thời gian đo liên tục 90° sau khi phanh để xem cự ly ổn định (ms)
 
 // --- Encoder quang chữ U 20 lỗ (PB7 = EXTI7 bánh trái, PB6 = EXTI6 bánh phải) ---
 #define ENC_LEFT_PIN Encoder_L_Pin   // PB7 - ngắt ngoài xung encoder bánh trái

@@ -55,6 +55,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/scanner.c
     Core/Src/scanbench.c
     Core/Src/motorbench.c
+    Core/Src/agvbench.c
     Core/Src/agv.c
     Core/Src/motor.c
     Core/Src/motion.c

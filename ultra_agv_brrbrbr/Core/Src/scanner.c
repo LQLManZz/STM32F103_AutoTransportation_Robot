@@ -64,6 +64,25 @@ static bool isFrontAngle(uint8_t angleDeg)
   return (angleDeg >= SCAN_CLOSE_WALL_MIN_DEG && angleDeg <= SCAN_CLOSE_WALL_MAX_DEG);
 }
 
+// Mục tiêu nghi ngờ nằm chính diện mũi xe (chạy thẳng tới soi được, không cần xoay)
+static bool isSuspectFront(uint8_t angleDeg)
+{
+  int16_t err = (int16_t)angleDeg - (int16_t)SCAN_HOME_ANGLE;
+  if (err < 0)
+    err = -err;
+  return err <= (int16_t)SCAN_SUSPECT_FRONT_HALF_DEG;
+}
+
+// Ghi nhận mục tiêu nghi ngờ: ưu tiên chính diện, cùng loại thì giữ cụm gặp trước (cụm đã sắp gần -> xa)
+static void noteSuspect(uint8_t angleDeg, float distCm)
+{
+  if (lastExtra.hasSuspect && (isSuspectFront(lastExtra.suspectAngleDeg) || !isSuspectFront(angleDeg)))
+    return;
+  lastExtra.hasSuspect = true;
+  lastExtra.suspectAngleDeg = angleDeg;
+  lastExtra.suspectDistCm = distCm;
+}
+
 ScanTargetType scanClassifyTarget(float d05RawCm, float d04RawCm)
 {
   if (d04RawCm == ECHO_ERROR_TOO_CLOSE ||
@@ -566,13 +585,9 @@ static ScanStatus scanArcCluster(uint8_t arcStartDeg, uint8_t arcEndDeg, uint8_t
     const ScanCluster *c = &clusters[i];
     if (c->distCm > SCAN_CLASSIFY_MAX_CM)
     {
-      // Ngoài tầm phân loại tin cậy: ghi nhận cụm xa gần nhất để xe tiến lại soi
-      if (!fineMode && !lastExtra.hasSuspect)
-      {
-        lastExtra.hasSuspect = true;
-        lastExtra.suspectAngleDeg = c->centerDeg;
-        lastExtra.suspectDistCm = c->distCm;
-      }
+      // Ngoài tầm phân loại tin cậy: ghi nhận cụm xa để xe tiến lại soi
+      if (!fineMode)
+        noteSuspect(c->centerDeg, c->distCm);
       continue;
     }
 
@@ -595,12 +610,8 @@ static ScanStatus scanArcCluster(uint8_t arcStartDeg, uint8_t arcEndDeg, uint8_t
                      (c->endDeg == arcEndDeg && c->endDistCm <= c->minDistCm + SCAN_EDGE_MIN_TOL_CM);
     if (atArcEdge)
     {
-      if (!fineMode && !lastExtra.hasSuspect)
-      {
-        lastExtra.hasSuspect = true;
-        lastExtra.suspectAngleDeg = (c->startDistCm <= c->endDistCm) ? c->startDeg : c->endDeg;
-        lastExtra.suspectDistCm = c->minDistCm;
-      }
+      if (!fineMode)
+        noteSuspect((c->startDistCm <= c->endDistCm) ? c->startDeg : c->endDeg, c->minDistCm);
       debugLog("CLUSTER_EDGE center=%u d=%s\r\n", c->centerDeg, debugF1(c->distCm));
       continue;
     }
@@ -619,12 +630,8 @@ static ScanStatus scanArcCluster(uint8_t arcStartDeg, uint8_t arcEndDeg, uint8_t
       return SCAN_OBJECT_FOUND;
     }
     // Xác minh không ổn định: không bỏ qua mà báo nghi ngờ để xe soi lại
-    if (!fineMode && !lastExtra.hasSuspect)
-    {
-      lastExtra.hasSuspect = true;
-      lastExtra.suspectAngleDeg = c->centerDeg;
-      lastExtra.suspectDistCm = c->distCm;
-    }
+    if (!fineMode)
+      noteSuspect(c->centerDeg, c->distCm);
   }
 
   // Lượt soát cuối: vật dựa sát tường bị gộp vào cụm tường (trừ khi tường chắn mũi đã quá sát)
@@ -640,6 +647,7 @@ static ScanStatus scanArcCluster(uint8_t arcStartDeg, uint8_t arcEndDeg, uint8_t
     {
       *angleDeg = verifiedAng;
       *distanceCm = verifiedDist;
+      lastExtra.isWallBump = true;
       debugLog("CLUSTER_RUN start=%u end=%u -> center=%u d05=%s d04=%s\r\n",
                runCand.startDeg, runCand.endDeg, verifiedAng, debugF1(verifiedDist), debugF1(verifiedD04));
       HAL_Delay(SCAN_FOUND_HOLD_MS);

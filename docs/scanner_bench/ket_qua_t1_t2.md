@@ -124,9 +124,9 @@ Thay đổi thuật toán sau T4: `SCAN_CORE_DEPTH_MARGIN_CM` 3 → 1 cm, phân 
 | 9 | Rubik 20 cm chính diện, carton sát sau | OBJ | OBJ 87–92° / 19.8–20.2 ×3 | 3/3 |
 
 Giới hạn đã biết:
-- Vật thấp hơn ~30 mm ở xa hơn 12 cm bị coi là mép vật cản (SRF05 trên không thấy đỉnh vật).
+- Vật thấp hơn ~30 mm ở xa hơn 16 cm bị coi là mép vật cản (SRF05 trên không thấy đỉnh vật). Ngưỡng nâng 12 → 16 cm sau khi gắn cố định SRF05 trên: nó không thấy rubik ở 15 cm (stress S9).
 - Vật sát tường lệch khỏi pháp tuyến tường khi xe nhìn thẳng vào tường bị tường che (chùm SRF05 dưới ±45°).
-- Góc báo ra có lúc lệch +5..+12° (cảnh 5, 6), lúc không (cảnh 9) — cần bài hiệu chuẩn góc riêng.
+- Góc báo ra có lúc lệch +5..+12° (cảnh 5, 6), lúc không (cảnh 9): đã đo ở bài I1 (`docs/agv_bench/huong_dan_test.md`), chùm 2 SRF05 lệch +8..+10° so với góc lệnh, bù bằng `SERVO_CENTER_TRIM_DEG = 9`.
 
 ## Stress test (cảnh ngẫu nhiên do người dùng dựng, Claude đoán mù từ UART + vẽ lại cảnh)
 
