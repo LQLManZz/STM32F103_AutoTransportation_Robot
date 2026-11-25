@@ -75,6 +75,8 @@
 #define SCAN_FRONT_CLEAR_MAX_DEG 105u     // Góc kết thúc vùng kiểm tra thông thoáng phía trước mũi (độ)
 #define SCAN_EXPAND_CLEAR_CM 45.0f        // Khoảng trống tối thiểu phía trước để tiến dọc hành lang khi chưa thấy vật (cm)
 #define SCAN_SUSPECT_FRONT_HALF_DEG 15u   // Nghi ngờ lệch 90° <= ngưỡng này là chính diện: được ưu tiên và chạy thẳng tới soi, không xoay (độ)
+#define SCAN_STUCK_MIN_POINTS 13u        // Số điểm tối thiểu của cung để xét servo kẹt (cung quét tinh 60..120° có 13 điểm)
+#define SCAN_STUCK_SPREAD_CM 0.5f        // SRF05 dưới chênh <= ngưỡng này ở mọi góc là servo không quay (đo thật: kẹt cho 14.5..14.8 cm cả cung) (cm)
 
 #define SCAN_FINE_MIN_DEG 60u   // Góc bắt đầu quét hẹp vi chỉnh quanh HOME
 #define SCAN_FINE_MAX_DEG 120u  // Góc kết thúc quét hẹp vi chỉnh
@@ -178,10 +180,11 @@
 #define AGV_GRAB_SCAN_STEP_DEG 9u       // Bước quét nhanh xác nhận vật trong vùng tolerance quanh mũi (độ)
 #define AGV_MIN_SPIN_DEG 6              // Không xoay vi chỉnh góc nhỏ hơn ngưỡng này khi ở gần (độ)
 #define AGV_FINE_TRIGGER_SPIN_DEG 15    // Chỉ quét tinh khi vừa xoay thô góc lớn >= ngưỡng này (độ)
-#define AGV_CLOSE_NO_FINE_DIST_CM 18.0f // Vật gần <= ngưỡng này bỏ qua scanFine và chạy thẳng vào tầm gắp (cm)
 #define AGV_GRAB_BACKUP_CM 2            // Bước lùi nhẹ khi quá sát để đưa vật về đúng tầm gắp (cm)
+#define AGV_GRAB_CREEP_CM 6.0f         // Đoạn cuối dừng cách mặt vật chừng này đo lại rồi mới nhích vào tầm gắp, tránh chạy mù tông vật (cm)
+#define AGV_SPIN_CLEAR_CM 8.0f         // Vật gần hơn ngưỡng này mà cần xoay thì lùi ra trước để mũi xe/càng gắp không hất vật (cm)
 #define AGV_WALL_OBJ_MIN_GAP_CM 2.0f    // Tường sau (SRF05 trên đã bù 7 cm) phải xa hơn mặt vật (SRF05 dưới) tối thiểu chừng này mới coi là vật sát tường (cm)
-#define AGV_PICK_MIN_GAIN_CM 2.0f       // Cự ly chính diện phải tăng tối thiểu sau khi nâng cần mới xác nhận đã gắp được vật (cm)
+#define AGV_PICK_VERIFY_BACK_CM 10      // Lùi ra sau khi nâng cần rồi quét lại: vật còn trên sàn quanh chỗ cũ là gắp hụt (cm)
 #define AGV_DRIVE_MISS_RATIO 0.5f       // Tỉ lệ quãng đường tiến tối thiểu phải rút ngắn được trước mặt vật (hủy nếu d05 không giảm đủ)
 #define AGV_DRIVE_MISS_MIN_STEP_CM 15   // Quãng đường tiến tối thiểu để kiểm tra hiện tượng chạy trượt khỏi vật (cm)
 #define AGV_CORRIDOR_STEP_CM 25         // Bước tiến dọc hành lang thông thoáng khi chưa thấy vật trong 80 cm (cm)

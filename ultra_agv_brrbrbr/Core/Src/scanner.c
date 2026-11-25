@@ -30,6 +30,7 @@ static bool lastFrontClear = false;
 static bool lastLeftWall = false;
 static bool lastRightWall = false;
 static ScanExtraInfo lastExtra = {false, false, false, SCAN_HOME_ANGLE, 0.0f};
+static uint8_t lastSuspectRank = 0u;
 static ScanWallSegLocal lastWallSegs[SCAN_MAX_WALL_SEGS_LOCAL];
 static uint8_t lastWallSegCount = 0u;
 
@@ -73,14 +74,17 @@ static bool isSuspectFront(uint8_t angleDeg)
   return err <= (int16_t)SCAN_SUSPECT_FRONT_HALF_DEG;
 }
 
-// Ghi nhận mục tiêu nghi ngờ: ưu tiên chính diện, cùng loại thì giữ cụm gặp trước (cụm đã sắp gần -> xa)
-static void noteSuspect(uint8_t angleDeg, float distCm)
+// Ghi nhận mục tiêu nghi ngờ: cụm kiểu vật (<= 30 cm) thắng cụm xa chưa phân loại, cùng loại thì chính diện thắng,
+// còn lại giữ cụm gặp trước (cụm đã sắp gần -> xa)
+static void noteSuspect(uint8_t angleDeg, float distCm, bool objLike)
 {
-  if (lastExtra.hasSuspect && (isSuspectFront(lastExtra.suspectAngleDeg) || !isSuspectFront(angleDeg)))
+  uint8_t newRank = (uint8_t)((objLike ? 2u : 0u) + (isSuspectFront(angleDeg) ? 1u : 0u));
+  if (lastExtra.hasSuspect && newRank <= lastSuspectRank)
     return;
   lastExtra.hasSuspect = true;
   lastExtra.suspectAngleDeg = angleDeg;
   lastExtra.suspectDistCm = distCm;
+  lastSuspectRank = newRank;
 }
 
 ScanTargetType scanClassifyTarget(float d05RawCm, float d04RawCm)
@@ -340,6 +344,24 @@ static void buildCluster(const ScanPoint *profile, const uint8_t *idx, uint8_t n
            (out->type == TARGET_OBSTACLE) ? "WALL" : "OBJ");
 }
 
+
+// Servo không quay (kẹt/sụt nguồn): mọi điểm cùng 1 hướng nên SRF05 dưới hợp lệ ở mọi góc và gần như không đổi
+static bool isFlatProfile(const ScanPoint *profile, uint8_t count)
+{
+  if (count < SCAN_STUCK_MIN_POINTS)
+    return false;
+  float loCm = profile[0].d05Cm;
+  float hiCm = profile[0].d05Cm;
+  for (uint8_t i = 0u; i < count; i++)
+  {
+    float d = profile[i].d05Cm;
+    if (!isValidD05(d))
+      return false;
+    if (d < loCm) loCm = d;
+    if (d > hiCm) hiCm = d;
+  }
+  return (hiCm - loCm) <= SCAN_STUCK_SPREAD_CM;
+}
 // Tách các đoạn bề mặt liên tục theo d05 (bắc cầu 1 điểm rớt sóng), dựng cụm và sắp gần -> xa
 static uint8_t extractClusters(const ScanPoint *profile, uint8_t count, ScanCluster *clusters, uint8_t maxClusters)
 {
@@ -569,6 +591,15 @@ static ScanStatus scanArcCluster(uint8_t arcStartDeg, uint8_t arcEndDeg, uint8_t
 
   resetLastExtra();
   uint8_t count = captureScanProfile(arcStartDeg, arcEndDeg, stepDeg, profile, SCAN_MAX_POINTS);
+  // Servo không quay thì profile phẳng giả: cấp lại xung servo rồi quét lại 1 lần, không ra quyết định từ dữ liệu giả
+  if (isFlatProfile(profile, count))
+  {
+    debugLog("SCAN_STUCK arc=[%u..%u] n=%u d=%s\r\n", arcStartDeg, arcEndDeg, count, debugF1(profile[0].d05Cm));
+    servoStop();
+    HAL_Delay(SERVO_INIT_SETTLE_MS);
+    servoInit();
+    count = captureScanProfile(arcStartDeg, arcEndDeg, stepDeg, profile, SCAN_MAX_POINTS);
+  }
   uint8_t clusterCount = extractClusters(profile, count, clusters, SCAN_MAX_CLUSTERS);
   if (!fineMode)
     updateCorridorHints(profile, count);
@@ -587,7 +618,7 @@ static ScanStatus scanArcCluster(uint8_t arcStartDeg, uint8_t arcEndDeg, uint8_t
     {
       // Ngoài tầm phân loại tin cậy: ghi nhận cụm xa để xe tiến lại soi
       if (!fineMode)
-        noteSuspect(c->centerDeg, c->distCm);
+        noteSuspect(c->centerDeg, c->distCm, false);
       continue;
     }
 
@@ -611,7 +642,7 @@ static ScanStatus scanArcCluster(uint8_t arcStartDeg, uint8_t arcEndDeg, uint8_t
     if (atArcEdge)
     {
       if (!fineMode)
-        noteSuspect((c->startDistCm <= c->endDistCm) ? c->startDeg : c->endDeg, c->minDistCm);
+        noteSuspect((c->startDistCm <= c->endDistCm) ? c->startDeg : c->endDeg, c->minDistCm, true);
       debugLog("CLUSTER_EDGE center=%u d=%s\r\n", c->centerDeg, debugF1(c->distCm));
       continue;
     }
@@ -631,7 +662,7 @@ static ScanStatus scanArcCluster(uint8_t arcStartDeg, uint8_t arcEndDeg, uint8_t
     }
     // Xác minh không ổn định: không bỏ qua mà báo nghi ngờ để xe soi lại
     if (!fineMode)
-      noteSuspect(c->centerDeg, c->distCm);
+      noteSuspect(c->centerDeg, c->distCm, true);
   }
 
   // Lượt soát cuối: vật dựa sát tường bị gộp vào cụm tường (trừ khi tường chắn mũi đã quá sát)
@@ -696,6 +727,23 @@ ScanStatus scanFine(float *distanceCm, uint8_t *angleDeg)
   moveServoSmooth(SCAN_HOME_ANGLE);
   HAL_Delay(SCAN_SETTLE_MS);
   return status;
+}
+
+bool scanFineBearing(float *distanceCm, uint8_t *angleDeg)
+{
+  ScanPoint profile[SCAN_MAX_POINTS];
+  ScanCluster clusters[SCAN_MAX_CLUSTERS];
+  uint8_t count = captureScanProfile(SCAN_FINE_MAX_DEG, SCAN_FINE_MIN_DEG, SCAN_FINE_STEP_DEG, profile, SCAN_MAX_POINTS);
+  uint8_t n = extractClusters(profile, count, clusters, SCAN_MAX_CLUSTERS);
+  moveServoSmooth(SCAN_HOME_ANGLE);
+  HAL_Delay(SCAN_SETTLE_MS);
+  // Cụm gần nhất (đã sắp gần -> xa) có tâm trong cửa sổ hợp lệ quanh HOME
+  // Chỉ bỏ cụm có tâm nằm ngay mép cung (tâm vật có thể ở ngoài cung); vật lệch 20° ở gần vẫn phải lấy được góc
+  if (n == 0u || clusters[0].centerDeg <= SCAN_FINE_MIN_DEG || clusters[0].centerDeg >= SCAN_FINE_MAX_DEG)
+    return false;
+  *angleDeg = clusters[0].centerDeg;
+  *distanceCm = clusters[0].distCm;
+  return true;
 }
 
 void scanGetLastCorridorHint(bool *frontClear, bool *leftWall, bool *rightWall)

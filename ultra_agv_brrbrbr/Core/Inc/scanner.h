@@ -57,6 +57,9 @@ ScanStatus scanSideArc(ScanSide side, float *distanceCm, uint8_t *angleDeg);
 // Quét góc hẹp từ trái sang phải quanh HOME (120°..60°) để vi chỉnh hướng mũi xe vào vật gần nhất
 ScanStatus scanFine(float *distanceCm, uint8_t *angleDeg);
 
+// Quét hẹp quanh HOME chỉ lấy góc + cự ly cụm gần nhất (không phân loại lại, vật đã chốt từ lượt quét toàn cung)
+bool scanFineBearing(float *distanceCm, uint8_t *angleDeg);
+
 // Lấy gợi ý không gian từ lần quét toàn cung gần nhất (phía trước thoáng, có tường trái/phải)
 void scanGetLastCorridorHint(bool *frontClear, bool *leftWall, bool *rightWall);
 
